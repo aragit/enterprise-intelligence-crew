@@ -27,10 +27,50 @@ The framework orchestrates a sequential, state-validated multi-agent topology. R
 
 ---
 
+## Technical Environment Provisioning
+1. Isolated Workspace Bounds
+Due to commercial package mirror limits, the runtime workspace is instantiated exclusively using the community-driven open-source conda-forge engine:
+
+
+
+```python
+# Initialize isolated conda environment tracking Python 3.10
+conda create -n enterprise-crew -c conda-forge --override-channels python=3.10 -y
+conda activate enterprise-crew
+
+# Install the pinned orchestration and data validation stack
+pip install -r requirements.txt
+```
+
+2. Runtime Telemetry Configurations
+Create a hidden configuration layer (.env) within the workspace root directory to map your Large Language Model tracking vectors safely:
+
+```python
+OPENAI_API_KEY=your_production_api_key_here
+```
+
+3. Pipeline Trigger
+Execute the programmatic orchestration driver to compile the crew architecture and execute the state machine:
+
+```python
+python main.py
+```
+
+## Telemetry & Data Validation LayerThe
+framework leverages Pydantic v2 fields to strictly constrain agent communication nodes:
+
+| Schema Layer | Target Payload | Enforced Validation Mechanics |
+| :--- | :--- | :--- |
+| **`src/schemas/payloads.py`** | **`TrendPayload`**<br>Signal Ingestion Layer | Validates quantitative momentum scores, extracts variable telemetry metrics, and enforces strict `HttpUrl` structure parsing on incoming references. |
+| **`src/schemas/payloads.py`** | **`RiskPayload`**<br>Compliance Audit Layer | Computes a real-time compliance penalty index (`0.0` to `1.0`), isolates regulatory flags, and outputs mutation arrays for upstream re-routing. |
+| **`src/schemas/payloads.py`** | **`ContentPayload`**<br>Asset Synthesis Layer | Formats final enterprise-ready structural copies along with corresponding matrix tags optimized for indexing. |
+
+
+
 ## 📂 Repository Workspace Topology
 
 
-.
+```text
 ├── configs/
 │   └── crew_config.yaml      # Decoupled declarative agent identities and task vectors
 ├── data/                     # Local file and grounded ingestion storage
@@ -48,25 +88,12 @@ The framework orchestrates a sequential, state-validated multi-agent topology. R
 ├── requirements.txt          # Pinned multi-agent ecosystem dependencies
 └── .gitignore                # Enterprise tracking security exclusions
 `
-## Technical Environment Provisioning
-1. Isolated Workspace Bounds
-Due to commercial package mirror limits, the runtime workspace is instantiated exclusively using the community-driven open-source conda-forge engine:
+---
 
-Bash
-# Initialize isolated conda environment tracking Python 3.10
-conda create -n enterprise-crew -c conda-forge --override-channels python=3.10 -y
-conda activate enterprise-crew
 
-# Install the pinned orchestration and data validation stack
-pip install -r requirements.txt
-2. Runtime Telemetry Configurations
-Create a hidden configuration layer (.env) within the workspace root directory to map your Large Language Model tracking vectors safely:
 
-Code snippet
-OPENAI_API_KEY=your_production_api_key_here
-3. Pipeline Trigger
-Execute the programmatic orchestration driver to compile the crew architecture and execute the state machine:
 
-Bash
-python main.py
+
+
+
 
