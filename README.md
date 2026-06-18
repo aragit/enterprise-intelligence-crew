@@ -6,7 +6,7 @@ A production-grade, closed-loop multi-agent orchestration framework leveraging d
 
 ---
 
-## 🏗️ Architectural Execution Flow
+## Architectural Execution Flow
 
 The framework orchestrates a sequential, state-validated multi-agent topology. Rather than passing loose, unstructured string components between runtime nodes, agents interact via immutable data contracts to maintain strict type safety and eliminate downstream hallucination cascades.
 
@@ -65,7 +65,7 @@ framework leverages Pydantic v2 fields to strictly constrain agent communication
 | **`src/schemas/payloads.py`** | **`RiskPayload`**<br>Compliance Audit Layer | Computes a real-time compliance penalty index (`0.0` to `1.0`), isolates regulatory flags, and outputs mutation arrays for upstream re-routing. |
 | **`src/schemas/payloads.py`** | **`ContentPayload`**<br>Asset Synthesis Layer | Formats final enterprise-ready structural copies along with corresponding matrix tags optimized for indexing. |
 
-
+---
 
 ## 📂 Repository Workspace Topology
 
@@ -88,11 +88,6 @@ framework leverages Pydantic v2 fields to strictly constrain agent communication
 ├── requirements.txt          # Pinned multi-agent ecosystem dependencies
 └── .gitignore                # Enterprise tracking security exclusions
 `
----
-
-
-
-
 
 
 
