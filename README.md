@@ -29,7 +29,7 @@ The framework orchestrates a sequential, state-validated multi-agent topology. R
 
 ## 📂 Repository Workspace Topology
 
-```text
+
 .
 ├── configs/
 │   └── crew_config.yaml      # Decoupled declarative agent identities and task vectors
@@ -47,5 +47,26 @@ The framework orchestrates a sequential, state-validated multi-agent topology. R
 ├── main.py                   # Deterministic pipeline runtime execution driver
 ├── requirements.txt          # Pinned multi-agent ecosystem dependencies
 └── .gitignore                # Enterprise tracking security exclusions
-```
+`
+## Technical Environment Provisioning
+1. Isolated Workspace Bounds
+Due to commercial package mirror limits, the runtime workspace is instantiated exclusively using the community-driven open-source conda-forge engine:
+
+Bash
+# Initialize isolated conda environment tracking Python 3.10
+conda create -n enterprise-crew -c conda-forge --override-channels python=3.10 -y
+conda activate enterprise-crew
+
+# Install the pinned orchestration and data validation stack
+pip install -r requirements.txt
+2. Runtime Telemetry Configurations
+Create a hidden configuration layer (.env) within the workspace root directory to map your Large Language Model tracking vectors safely:
+
+Code snippet
+OPENAI_API_KEY=your_production_api_key_here
+3. Pipeline Trigger
+Execute the programmatic orchestration driver to compile the crew architecture and execute the state machine:
+
+Bash
+python main.py
 
