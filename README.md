@@ -126,27 +126,61 @@ python3 -m pytest tests/ -v
                               └──────────────────────────────┘
 ```
 
-### Data Contracts
+A **three-agent sequential CrewAI pipeline** with a **state-machine risk gate** that takes a user query through the full intelligence lifecycle — from live web research to risk-validated, SEO-optimized content — entirely on local infrastructure.
 
-Every agent stage produces a validated Pydantic V2 payload:
+### Tool Arsenal 
 
-| Contract | Fields | Produced By |
+| Tool | Library | What It Does |
 |---|---|---|
-| `TrendPayload` | `trend_name`, `momentum_score`, `extracted_metrics`, `verified_sources` | TrendInvestigator |
-| `RiskPayload` | `is_safe`, `risk_score`, `flagged_keywords`, `required_revisions` | RiskAnalyst |
-| `ContentPayload` | `headline`, `body_content`, `metadata_tags` | Copywriter |
+| `web_search` | `duckduckgo_search` | DDGS text search, returns title/href/body |
+| `web_scraper` | `trafilatura` + `requests` | HTML extraction, title, word count |
+| `sentiment_analyzer` | `textblob` | Polarity (-1 to 1), subjectivity, label |
+| `bias_detector` | Heuristic | 4-category keyword scan (hyperbolic, emotional, certainty, vagueness) + source domain diversity score |
+| `validator` | `urllib.parse` + regex | TLD trust (`.edu`, `.gov`, `.org`), known-credible domain whitelist, content length check |
+| `seo_optimizer` | `textstat` | Flesch readability, grade level, keyword density, optimization suggestions |
+| `summarizer` | `sumy` (LSA) | Extractive summarization, configurable sentence count |
 
-### LLM Layer
+All tools wrapped with `@retry(max_attempts=3, delay=1.0)` and return `ToolResult(success, data, error, duration_ms)`.
 
-Two paths, selected by `LLM_PROVIDER`:
 
-| Provider | Backend | When To Use |
+### Data Contracts (Pydantic V2)
+
+Every stage produces a strictly validated payload:
+
+| Contract | Fields | Validation |
 |---|---|---|
-| `ollama` (default) | `OllamaNativeLLM` — calls `/api/chat` via httpx | Local, air-gapped, no API keys |
-| `openai` | `crewai.LLM` — standard OpenAI SDK | Cloud, GPT-4o, etc. |
-| `mock` | `crewai.LLM` with fake key | Development / CI / testing |
+| `TrendPayload` | `trend_name`, `momentum_score` (0.0–1.0), `extracted_metrics` (dict), `verified_sources` (list[str]) | Regex URL validator (`http(s)://` + valid host); rejects `localhost`, bare IPs |
+| `RiskPayload` | `is_safe` (bool), `risk_score` (0.0–1.0), `flagged_keywords` (list), `required_revisions` (list) | — |
+| `ContentPayload` | `headline`, `body_content`, `metadata_tags` (list[str]) | — |
 
-> **Why not LiteLLM?** CrewAI 1.14 routes `ollama/` models through `OpenAICompatibleCompletion` which requires the `/v1/chat/completions` endpoint — unavailable on Ollama ≤0.24. `OllamaNativeLLM` bypasses this entirely by calling the native `/api/chat` endpoint directly, supporting **any** Ollama version.
+
+
+### LLM Layer 
+
+#### 1. `OllamaNativeLLM` (`src/llm.py`)
+Custom provider extending `crewai.llms.base_llm.BaseLLM` that calls Ollama's **native `/api/chat`** endpoint directly via `httpx`.
+
+**Why native?** CrewAI 1.14 routes `ollama/` models through `OpenAICompatibleCompletion` which requires `/v1/chat/completions` — unavailable on Ollama ≤0.24. This adapter bypasses that entirely.
+
+| Feature | Support |
+|---|---|
+| Sync (`call`) / Async (`acall`) | ✅ |
+| Tool calling | ✅ |
+| Structured output (`response_model`) | ✅ |
+| Stop words | ✅ |
+| Streaming | ✅ |
+| Usage extraction (`prompt_eval_count` / `eval_count`) | ✅ |
+| Health probes (`list_available_models`, `check_model_exists`) | ✅ |
+| Context window | 131,072 tokens |
+
+#### 2. `LLMFactory` (`src/llm_factory.py`)
+Standalone provider abstraction with `BaseLLMProvider` interface:
+
+| Provider | Backend | Use Case |
+|---|---|---|
+| `OllamaProvider` | `/api/generate` + `/api/chat` via `httpx` | Standalone tool usage outside CrewAI |
+| `OpenAIProvider` | `openai` SDK | Cloud fallback |
+| `MockProvider` | Static responses | CI / testing / no-Ollama dev |
 
 ### Risk Gate
 
@@ -183,16 +217,16 @@ curl -s -X POST http://localhost:8000/crew/run \
 
 ---
 
-## Configuration
+## Configuration (`src/config.py`)
 
-All settings via environment variables or `.env`:
+Pydantic Settings with `.env` override:
 
 | Variable | Default | Options |
 |---|---|---|
 | `LLM_PROVIDER` | `ollama` | `ollama`, `openai`, `mock` |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Any Ollama host |
 | `OLLAMA_MODEL` | `qwen2.5:1.5b` | Any pulled model |
-| `OPENAI_API_KEY` | — | Required for provider=openai |
+| `OPENAI_API_KEY` | — | Required for `openai` |
 | `OPENAI_MODEL` | `gpt-4o-mini` | Any OpenAI model |
 | `CHROMADB_PATH` | `./data/chromadb` | Persistence path |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` |
