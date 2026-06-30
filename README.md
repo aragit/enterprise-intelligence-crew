@@ -4,26 +4,17 @@
   <img src="https://img.shields.io/badge/FastAPI-0.115+-00a393?style=for-the-badge&logo=fastapi" alt="FastAPI"/>
   <img src="https://img.shields.io/badge/LangGraph-1.2+-purple?style=for-the-badge&logo=langgraph" alt="LangGraph"/>
   <img src="https://img.shields.io/badge/Pydantic_V2-2.7+-E92063?style=for-the-badge&logo=pydantic" alt="Pydantic V2"/>
-  <br/>
   <img src="https://img.shields.io/badge/Ollama-native-000000?style=for-the-badge&logo=ollama" alt="Ollama"/>
   <img src="https://img.shields.io/badge/OpenAI-compatible-412991?style=for-the-badge&logo=openai" alt="OpenAI"/>
   <img src="https://img.shields.io/badge/vLLM-supported-8A2BE2?style=for-the-badge&logo=nvidia" alt="vLLM"/>
-  <br/>
   <img src="https://img.shields.io/badge/ChromaDB-1.1+-yellow?style=for-the-badge&logo=chromadb" alt="ChromaDB"/>
-  <img src="https://img.shields.io/badge/Sentence_Transformers-3.0+-FF6F00?style=for-the-badge&logo=huggingface" alt="Sentence Transformers"/>
-  <br/>
   <img src="https://img.shields.io/badge/Web_Search-DuckDuckGo-FF6600?style=for-the-badge&logo=duckduckgo" alt="DuckDuckGo"/>
   <img src="https://img.shields.io/badge/Scraping-Trafilatura-2C8EBB?style=for-the-badge&logo=python" alt="Trafilatura"/>
-  <img src="https://img.shields.io/badge/NLP-TextBlob_VADER_sumy-4CAF50?style=for-the-badge" alt="NLP Stack"/>
-  <br/>
   <img src="https://img.shields.io/badge/Metrics-Prometheus-E6522C?style=for-the-badge&logo=prometheus" alt="Prometheus"/>
   <img src="https://img.shields.io/badge/Logging-Loguru-30A5DC?style=for-the-badge&logo=python" alt="Loguru"/>
   <img src="https://img.shields.io/badge/Tracing-OpenTelemetry-000000?style=for-the-badge&logo=opentelemetry" alt="OpenTelemetry"/>
-  <br/>
-  <img src="https://img.shields.io/badge/tests-72%20passing-brightgreen?style=for-the-badge&logo=pytest" alt="72 tests passing"/>
-  <img src="https://img.shields.io/badge/Docker-ready-2496ED?style=for-the-badge&logo=docker" alt="Docker ready"/>
-  <img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="MIT license"/>
-</p>
+ <img src="https://img.shields.io/badge/Docker-ready-2496ED?style=for-the-badge&logo=docker" alt="Docker ready"/>
+ </p>
 
 
 <h1 align="center">Enterprise Intelligence Crew</h1>
