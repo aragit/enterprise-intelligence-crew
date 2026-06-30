@@ -26,18 +26,6 @@
 </p>
 
 
-
-### [Enterprise Intelligence Crew](https://github.com/aragit/enterprise-intelligence-crew/tree/main)  
-**Autonomous content lifecycle platform**  
-> CrewAI, LangChain/LangGraph, Pydantic, ChromaDB              
-> 🟢 `Active` • `Multi-agent Orchestration`  
-
-**Architecture insight**  
-- Hierarchical multi-agent workflow with structured delegation  
-- Specialized agents for trend research, risk analysis, and content generation  
-- Memory synchronization across task pipelines  
-- Enforced schema validity via Pydantic output contracts
-
 <h1 align="center">Enterprise Intelligence Crew</h1>
 <p align="center">
   <em>Multi-agent orchestration pipeline for autonomous enterprise trend intelligence — research, risk-assess, and generate production-grade content, fully local.</em>
