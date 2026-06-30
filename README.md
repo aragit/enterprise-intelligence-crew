@@ -19,7 +19,7 @@
 
 <h1 align="center">Enterprise Intelligence Crew</h1>
 <p align="center">
-  <em>Multi-agent orchestration pipeline for autonomous enterprise trend intelligence — research, risk-assess, and generate production-grade content, fully local.</em>
+  <b>Multi-agent orchestration pipeline for autonomous enterprise trend intelligence — research, risk-assess, and generate production-grade content.</b>
 </p>
 
 <p align="center">
