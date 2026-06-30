@@ -25,6 +25,32 @@
   <img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="MIT license"/>
 </p>
 
+<br/>
+
+<!-- REPO CARD -->
+<table align="center">
+  <tr>
+    <td width="320" valign="top" align="center">
+      <a href="https://github.com/aragit/enterprise-intelligence-crew">
+        <img src="https://img.shields.io/badge/Enterprise_Intelligence_Crew-121013?style=for-the-badge&logo=github&logoColor=white" alt="Enterprise Intelligence Crew"/>
+      </a>
+    </td>
+    <td width="460" valign="top">
+      <table>
+        <tr><td><strong>Autonomous content lifecycle platform</strong></td></tr>
+        <tr><td><code>CrewAI</code> • <code>LangChain/LangGraph</code> • <code>Pydantic</code> • <code>ChromaDB</code> &nbsp; <img src="https://img.shields.io/badge/🟢_Active-2EA043?style=flat"/> <img src="https://img.shields.io/badge/Multi--agent_Orchestration-8A2BE2?style=flat"/></td></tr>
+        <tr><td><strong>Architecture insight</strong><br/>
+          • Hierarchical multi-agent workflow with structured delegation<br/>
+          • Specialized agents for trend research, risk analysis, and content generation<br/>
+          • Memory synchronization across task pipelines<br/>
+          • Enforced schema validity via Pydantic output contracts
+        </td></tr>
+      </table>
+    </td>
+  </tr>
+</table>
+<br/>
+
 <h1 align="center">Enterprise Intelligence Crew</h1>
 <p align="center">
   <em>Multi-agent orchestration pipeline for autonomous enterprise trend intelligence — research, risk-assess, and generate production-grade content, fully local.</em>
