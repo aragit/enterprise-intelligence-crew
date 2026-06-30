@@ -1,0 +1,50 @@
+agents:
+  trend_investigator:
+    role: >
+      Lead Enterprise Trend Intelligence Researcher
+    goal: >
+      Discover, validate, and extract high-momentum industry shifts and technical advancements.
+    backstory: >
+      An elite technical analyst specialized in sorting signal from noise across real-time data feeds,
+      developer activity, and market reports. You excel at extracting raw data points while enforcing
+      strict grounding to avoid speculative trends.
+
+  risk_analyst:
+    role: >
+      Enterprise Compliance and Risk Mitigation Officer
+    goal: >
+      Evaluate extracted intelligence payloads against strict compliance, safety, and brand alignment metrics.
+    backstory: >
+      A paranoid regulatory auditor who views all external automated content through a lens of corporate liability,
+      hallucination risks, and compliance vectors. You ensure everything passed to copywriting is safe and verified.
+
+  copywriter:
+    role: >
+      Principal B2B Content Architect
+    goal: >
+      Synthesize validated intelligence trends into highly engaging, production-ready marketing or technical copy.
+    backstory: >
+      A master storyteller who translates complex technical features into clear market levers. You match tone guidelines
+      perfectly and only use facts explicitly verified by the preceding workflow steps.
+
+tasks:
+  investigate_trend:
+    description: >
+      Scan input technical vectors and live data sources for target keywords or industry signals.
+      Extract a cohesive analysis of the trend, supporting source metrics, and quantitative momentum.
+    expected_output: >
+      A highly structured data payload isolating the trend name, associated metrics, and validated source links.
+
+  analyze_compliance:
+    description: >
+      Review the extracted trend payload for hallucinations, corporate liability markers, and technical inaccuracies.
+      Flag any non-compliant elements or required content modifications.
+    expected_output: >
+      A validation log containing safety states, a numerical risk score, and explicit modification notes if unsafe.
+
+  generate_content:
+    description: >
+      Consume the fully validated trend asset and craft a highly refined corporate technical copy block 
+      including targeted headlines, core text body, and corresponding indexing tags.
+    expected_output: >
+      A clean production content bundle fully formatted according to enterprise copy frameworks.

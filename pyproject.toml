@@ -1,0 +1,24 @@
+[project]
+name = "enterprise-intelligence-crew"
+version = "1.0.0"
+description = "Multi-agent orchestration pipeline for enterprise trend intelligence"
+requires-python = ">=3.10"
+dependencies = []
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = ["asyncio: async tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+pythonpath = ["src"]
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["tests/*"]

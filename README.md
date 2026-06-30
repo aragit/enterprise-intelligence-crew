@@ -1,94 +1,273 @@
-# Enterprise Intelligence Crew
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.12+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.12+"/>
+  <img src="https://img.shields.io/badge/CrewAI-1.14+-orange?style=for-the-badge&logo=crewai" alt="CrewAI"/>
+  <img src="https://img.shields.io/badge/FastAPI-0.115+-00a393?style=for-the-badge&logo=fastapi" alt="FastAPI"/>
+  <img src="https://img.shields.io/badge/Ollama-local-000000?style=for-the-badge&logo=ollama" alt="Ollama"/>
+  <img src="https://img.shields.io/badge/ChromaDB-1.1+-yellow?style=for-the-badge&logo=chromadb" alt="ChromaDB"/>
+  <br/>
+  <img src="https://img.shields.io/badge/tests-72%20passing-brightgreen?style=for-the-badge" alt="72 tests passing"/>
+  <img src="https://img.shields.io/badge/Docker-ready-2496ED?style=for-the-badge&logo=docker" alt="Docker ready"/>
+  <img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="MIT license"/>
+</p>
 
-A production-grade, closed-loop multi-agent orchestration framework leveraging decoupled execution boundaries, autonomous schema-enforced telemetry, and strict Pydantic v2 data verification layers for deterministic pipeline outputs.
+<h1 align="center">Enterprise Intelligence Crew</h1>
+<p align="center">
+  <em>Multi-agent orchestration pipeline for autonomous enterprise trend intelligence — research, risk-assess, and generate production-grade content, fully local.</em>
+</p>
 
-> *"Speak the Language of your Business, Discover the Lever, Prove the Signal, Ship & Scale."*
+<p align="center">
+  <a href="#-quick-start">Quick Start</a> •
+  <a href="#-architecture">Architecture</a> •
+  <a href="#-api">API</a> •
+  <a href="#-configuration">Configuration</a> •
+  <a href="#-project-structure">Structure</a> •
+  <a href="#-docker">Docker</a>
+</p>
 
 ---
 
-## Architectural Execution Flow
+## Overview
 
-The framework orchestrates a sequential, state-validated multi-agent topology. Rather than passing loose, unstructured string components between runtime nodes, agents interact via immutable data contracts to maintain strict type safety and eliminate downstream hallucination cascades.
+Enterprise Intelligence Crew is a **three-agent sequential pipeline** powered by [CrewAI](https://crewai.com) that takes a user query through the full intelligence lifecycle:
 
-### 1. Ingestion & Signal Extraction (Trend Investigator)
-* **Input Node:** Accepts the raw target domain context vector from the runtime driver.
-* **Processing:** Scans and cross-references active information streams to separate genuine signals from transient noise.
-* **Telemetry Bound:** Enforces strict grounding parameters to compile data points into a validated `TrendPayload`.
+1. **Trend Investigation** — Web search, scrape, sentiment analysis
+2. **Risk Assessment** — Bias detection, compliance scoring
+3. **Content Generation** — SEO optimization, summarization
 
-### 2. Automated Guardrails & Compliance Auditing (Risk Analyst)
-* **Input Node:** Consumes the structured output from the preceding ingestion node.
-* **Processing:** Evaluates the identified vectors against regulatory liabilities, hallucination thresholds, and enterprise compliance metrics.
-* **Telemetry Bound:** Generates a `RiskPayload` specifying a hard safety flag, explicit risk penalties, and required mutation arrays.
-
-### 3. Contextual Synthesis & Generation (Principal Copywriter)
-* **Input Node:** Receives the fully audited and cleared asset payload.
-* **Processing:** Translates complex technical capabilities into highly clear, high-conversion B2B copy structures.
-* **Telemetry Bound:** Serializes the final output into a production-ready `ContentPayload` complete with SEO metadata matrices.
+All LLM inference runs **locally** via [Ollama](https://ollama.ai) — no API keys, no cloud dependency, no data egress. A LangGraph-powered **risk gate** enforces quality guardrails between stages, and [ChromaDB](https://www.trychroma.com/) with sentence transformers persists research for semantic recall.
 
 ---
 
-## Technical Environment Provisioning
-1. Isolated Workspace Bounds
-Due to commercial package mirror limits, the runtime workspace is instantiated exclusively using the community-driven open-source conda-forge engine:
+## Quick Start
 
+### Prerequisites
 
+- Python 3.12+
+- [Ollama](https://ollama.ai) — with at least one model pulled:
+  ```bash
+  ollama pull qwen2.5:1.5b
+  ollama serve
+  ```
+- _No cloud API keys required._
 
-```python
-# Initialize isolated conda environment tracking Python 3.10
-conda create -n enterprise-crew -c conda-forge --override-channels python=3.10 -y
-conda activate enterprise-crew
+### Install & Run
 
-# Install the pinned orchestration and data validation stack
+```bash
+git clone https://github.com/aragit/enterprise-intelligence-crew.git
+cd enterprise-intelligence-crew
 pip install -r requirements.txt
-```
 
-2. Runtime Telemetry Configurations
-Create a hidden configuration layer (.env) within the workspace root directory to map your Large Language Model tracking vectors safely:
-
-```python
-OPENAI_API_KEY=your_production_api_key_here
-```
-
-3. Pipeline Trigger
-Execute the programmatic orchestration driver to compile the crew architecture and execute the state machine:
-
-```python
+# CLI mode
 python main.py
+
+# API server
+python3 -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+
+# With mock LLM (no Ollama needed — for testing)
+LLM_PROVIDER=mock python main.py
+
+# Run tests
+python3 -m pytest tests/ -v
 ```
-
-## Telemetry & Data Validation LayerThe
-framework leverages Pydantic v2 fields to strictly constrain agent communication nodes:
-
-| Schema Layer | Target Payload | Enforced Validation Mechanics |
-| :--- | :--- | :--- |
-| **`src/schemas/payloads.py`** | **`TrendPayload`**<br>Signal Ingestion Layer | Validates quantitative momentum scores, extracts variable telemetry metrics, and enforces strict `HttpUrl` structure parsing on incoming references. |
-| **`src/schemas/payloads.py`** | **`RiskPayload`**<br>Compliance Audit Layer | Computes a real-time compliance penalty index (`0.0` to `1.0`), isolates regulatory flags, and outputs mutation arrays for upstream re-routing. |
-| **`src/schemas/payloads.py`** | **`ContentPayload`**<br>Asset Synthesis Layer | Formats final enterprise-ready structural copies along with corresponding matrix tags optimized for indexing. |
 
 ---
 
-## 📂 Repository Workspace Topology
+## Architecture
 
+```
+                                    ┌──────────────────┐
+                                    │   🧑‍💻 QUERY      │
+                                    │  (research topic) │
+                                    └────────┬─────────┘
+                                             │
+                    ┌──────────────────────────────────────────┐
+                    │         CREWAI PIPELINE                  │
+                    │        (sequential, 3 agents)            │
+                    │                                          │
+                    │  ┌──────────────────────┐                │
+                    │  │ TrendInvestigator    │                │
+                    │  │  • Web Search (Duck) │                │
+                    │  │  • Web Scraper       │  TrendPayload  │
+                    │  │  • Sentiment Analyzer│───────▶        │
+                    │  └──────────┬───────────┘                │
+                    │             │                            │
+                    │             ▼                            │
+                    │  ┌──────────────────────┐                │
+                    │  │ RiskAnalyst          │                │
+                    │  │  • Bias Detector     │  RiskPayload   │
+                    │  │  • Source Validator  │───────▶        │
+                    │  └──────────┬───────────┘                │
+                    │             │                            │
+                    │         ┌───┴───┐                        │
+                    │         │ RISK  │◀── max_iter guard     │
+                    │         │ GATE  │── approve/reject       │
+                    │         └───┬───┘                        │
+                    │             │ (approved)                 │
+                    │             ▼                            │
+                    │  ┌──────────────────────┐                │
+                    │  │ Copywriter           │                │
+                    │  │  • SEO Optimizer     │ ContentPayload │
+                    │  │  • Summarizer        │───────▶        │
+                    │  └──────────────────────┘                │
+                    └──────────────────────────────────────────┘
+                                             │
+                                             ▼
+                              ┌──────────────────────────────┐
+                              │      CHROMADB MEMORY          │
+                              │  (all-MiniLM-L6-v2 embeddings)│
+                              │  Store & semantic retrieval   │
+                              └──────────────────────────────┘
+```
 
-```text
-├── configs/
-│   └── crew_config.yaml      # Decoupled declarative agent identities and task vectors
-├── data/                     # Local file and grounded ingestion storage
+### Data Contracts
+
+Every agent stage produces a validated Pydantic V2 payload:
+
+| Contract | Fields | Produced By |
+|---|---|---|
+| `TrendPayload` | `trend_name`, `momentum_score`, `extracted_metrics`, `verified_sources` | TrendInvestigator |
+| `RiskPayload` | `is_safe`, `risk_score`, `flagged_keywords`, `required_revisions` | RiskAnalyst |
+| `ContentPayload` | `headline`, `body_content`, `metadata_tags` | Copywriter |
+
+### LLM Layer
+
+Two paths, selected by `LLM_PROVIDER`:
+
+| Provider | Backend | When To Use |
+|---|---|---|
+| `ollama` (default) | `OllamaNativeLLM` — calls `/api/chat` via httpx | Local, air-gapped, no API keys |
+| `openai` | `crewai.LLM` — standard OpenAI SDK | Cloud, GPT-4o, etc. |
+| `mock` | `crewai.LLM` with fake key | Development / CI / testing |
+
+> **Why not LiteLLM?** CrewAI 1.14 routes `ollama/` models through `OpenAICompatibleCompletion` which requires the `/v1/chat/completions` endpoint — unavailable on Ollama ≤0.24. `OllamaNativeLLM` bypasses this entirely by calling the native `/api/chat` endpoint directly, supporting **any** Ollama version.
+
+### Risk Gate
+
+The `RiskGate` (`src/orchestration/risk_gate.py`) is a state machine:
+
+```
+analyze → evaluate → approve | reject → generate
+```
+
+- Risk > 0.7 → **reject** (flagged to user)
+- Risk ≤ 0.7 → **approve** (proceeds to Copywriter)
+- `max_iterations` exceeded → force-approve (circuit breaker)
+
+---
+
+## API
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/health` | Provider status, model, health message |
+| `POST` | `/crew/run` | Execute pipeline (synchronous) |
+| `POST` | `/crew/run/async` | Execute pipeline (async, returns `task_id`) |
+| `GET` | `/crew/status/{task_id}` | Poll async result |
+| `GET` | `/crew/memory/{topic}` | ChromaDB semantic search |
+| `GET` | `/metrics` | Prometheus scrape endpoint |
+
+### Example
+
+```bash
+curl -s -X POST http://localhost:8000/crew/run \
+  -H "Content-Type: application/json" \
+  -d '{"query_context": "Edge AI adoption in healthcare 2026"}' | jq .
+```
+
+---
+
+## Configuration
+
+All settings via environment variables or `.env`:
+
+| Variable | Default | Options |
+|---|---|---|
+| `LLM_PROVIDER` | `ollama` | `ollama`, `openai`, `mock` |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Any Ollama host |
+| `OLLAMA_MODEL` | `qwen2.5:1.5b` | Any pulled model |
+| `OPENAI_API_KEY` | — | Required for provider=openai |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Any OpenAI model |
+| `CHROMADB_PATH` | `./data/chromadb` | Persistence path |
+| `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` |
+
+---
+
+## Project Structure
+
+```
 ├── src/
-│   ├── __init__.py
 │   ├── agents/
-│   │   ├── __init__.py
-│   │   └── intelligence_crew.py # Programmatic multi-agent factory orchestration layer
+│   │   └── intelligence_crew.py   # Agent/task definitions, health check, _make_llm()
+│   ├── api/
+│   │   ├── main.py                # FastAPI app, lifespan, instrumentation
+│   │   └── routes.py              # Endpoints: health, crew run, memory, metrics
+│   ├── memory/
+│   │   └── crew_memory.py         # ChromaDB vector store client
+│   ├── orchestration/
+│   │   └── risk_gate.py           # State machine risk evaluator
 │   ├── schemas/
-│   │   ├── __init__.py
-│   │   └── payloads.py       # Strict Pydantic v2 validation data contracts
-│   └── tools/
-│       └── __init__.py       # Custom agent tools & semantic retrieval boundaries
-├── main.py                   # Deterministic pipeline runtime execution driver
-├── requirements.txt          # Pinned multi-agent ecosystem dependencies
-└── .gitignore                # Enterprise tracking security exclusions
-`
+│   │   └── payloads.py            # Pydantic V2 contracts: Trend, Risk, Content
+│   ├── tools/
+│   │   ├── web_search.py          # DuckDuckGo search
+│   │   ├── web_scraper.py         # Trafilatura HTML extraction
+│   │   ├── summarizer.py          # LSA extractive summary (sumy)
+│   │   ├── sentiment_analyzer.py  # TextBlob + VADER sentiment
+│   │   ├── bias_detector.py       # Heuristic political/commercial bias
+│   │   ├── validator.py           # Source credibility scoring
+│   │   └── seo_optimizer.py       # Readability, keyword density, suggestions
+│   ├── llm.py                     # OllamaNativeLLM — native /api/chat adapter
+│   ├── llm_factory.py             # Mock provider for testing/development
+│   └── config.py                  # Pydantic Settings with env overrides
+├── configs/
+│   └── crew_config.yaml           # Agent roles, goals, backstories
+├── tests/                         # 72 tests (pytest)
+├── AGENTS.md                      # Anchored summary — architecture decisions
+├── Dockerfile
+├── docker-compose.yml
+├── pyproject.toml
+└── requirements.txt
+```
 
+---
 
+## Docker
 
+```bash
+docker compose up --build
+```
 
+Pulls the model inside the container:
+
+```bash
+docker compose exec ollama ollama pull qwen2.5:1.5b
+```
+
+---
+
+## Testing
+
+```bash
+# Full suite (72 tests, 1 skipped — web search requires network)
+pytest tests/ -v
+
+# With coverage
+pytest tests/ --cov=src --cov-report=term-missing
+```
+
+---
+
+## Key Design Decisions
+
+| Decision | Rationale |
+|---|---|
+| **Native Ollama adapter** | CrewAI's `OpenAICompatibleCompletion` needs `/v1/chat/completions` (Ollama ≥0.28). `OllamaNativeLLM` uses `/api/chat` — compatible with all versions. |
+| **ChromaDB over LanceDB** | Avoids CrewAI's internal memory which defaults to OpenAI for memory extraction. ChromaDB + sentence-transformers is fully local, no API keys. |
+| **Agent `memory=False`** | CrewAI internal memory requires `gpt-4o-mini` extraction by default. Our own `CrewMemory` handles persistence. |
+| **`HttpUrl` → `str` + validator** | Pydantic's `HttpUrl` breaks `json.dumps()` in CrewAI's task output storage. String URLs with a `field_validator` solve this. |
+| **No LiteLLM dependency** | LiteLLM is optional in CrewAI 1.14. We use `httpx` directly — fewer dependencies, simpler debugging. |
+
+---
+
+## License
+
+MIT
