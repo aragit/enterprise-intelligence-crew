@@ -46,9 +46,11 @@ class TestEnterpriseIntelligenceCrew:
         task_names = [t.description[:20] for t in c.tasks]
         assert len(task_names) == 3
 
-    def test_tool_registry_empty_by_default(self):
+    def test_tool_registry_has_tools_by_default(self):
         crew = EnterpriseIntelligenceCrew()
-        assert crew._tool_registry == {}
+        assert len(crew._tool_registry) == 3
+        assert "trend_investigator" in crew._tool_registry
+        assert len(crew._tool_registry["trend_investigator"]) > 0
 
     def test_tool_registry_accepted(self):
         crew = EnterpriseIntelligenceCrew(tool_registry={"trend_investigator": []})

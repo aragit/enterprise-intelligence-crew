@@ -4,7 +4,6 @@ from dotenv import load_dotenv
 from src.config import settings
 from src.agents.intelligence_crew import EnterpriseIntelligenceCrew, check_llm_health
 
-# Disable CrewAI telemetry to avoid timeout delays
 os.environ["CREWAI_TELEMETRY_OPT_OUT"] = "true"
 
 load_dotenv()
@@ -30,22 +29,22 @@ def run_pipeline(query_context: str | None = None):
         sys.exit(1)
 
     try:
-        crew_engine = EnterpriseIntelligenceCrew().build_crew()
-
-        inputs = {
-            "query_context": query_context
+        query = (
+            query_context
             or "Next-generation neuro-symbolic agentic AI system designs for clinical multi-drug validation pipelines."
-        }
-
+        )
         print(f"\nLaunching autonomous agent pipeline...")
-        print(f"Context: {inputs['query_context']}\n")
+        print(f"Context: {query}\n")
 
-        pipeline_output = crew_engine.kickoff(inputs=inputs)
+        result = EnterpriseIntelligenceCrew().run_pipeline(query)
 
         print("\n" + "=" * 60)
         print("PIPELINE COMPLETE")
         print("=" * 60)
-        print(pipeline_output)
+        print(f"Gate decision: {result.get('gate_decision', 'N/A')}")
+        print(f"Trend: {result.get('trend', {})}")
+        print(f"Risk:  {result.get('risk', {})}")
+        print(f"Content: {result.get('content', {})}")
 
     except Exception as e:
         print(f"\n[CRITICAL] Pipeline execution failed: {e}")

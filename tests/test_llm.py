@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.llm_factory import MockProvider, OllamaProvider, OpenAIProvider, get_llm_provider
+from src.llm import MockProvider, OllamaProvider, OpenAIProvider, get_llm_provider
 from src.config import settings
 
 

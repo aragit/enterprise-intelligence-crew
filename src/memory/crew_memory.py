@@ -13,6 +13,27 @@ logger = logging.getLogger(__name__)
 COLLECTION_NAME = "enterprise_research"
 
 
+class _FallbackEmbedder:
+    _dim = 384
+
+    def encode(self, texts: str | list[str]) -> Any:
+        import numpy as np
+
+        if isinstance(texts, str):
+            texts = [texts]
+
+        out = np.zeros((len(texts), self._dim), dtype=np.float32)
+        for i, text in enumerate(texts):
+            tokens = text.lower().split()
+            for t in set(tokens):
+                idx = hash(t) % self._dim
+                out[i, idx] += 1.0
+            norm = np.linalg.norm(out[i])
+            if norm > 0:
+                out[i] /= norm
+        return out.squeeze(0) if len(texts) == 1 else out
+
+
 class CrewMemory:
     def __init__(self) -> None:
         self._client = chromadb.PersistentClient(
@@ -30,23 +51,9 @@ class CrewMemory:
             try:
                 from sentence_transformers import SentenceTransformer
                 self._embedder = SentenceTransformer("all-MiniLM-L6-v2")
+                logger.info("CrewMemory: using sentence-transformers embedder")
             except ImportError:
-                import hashlib
-                import numpy as np
-
-                class _FallbackEmbedder:
-                    @staticmethod
-                    def encode(texts: str | list[str]) -> np.ndarray:
-                        if isinstance(texts, str):
-                            texts = [texts]
-                        dim = 384
-                        out = np.zeros((len(texts), dim), dtype=np.float32)
-                        for i, t in enumerate(texts):
-                            h = hashlib.sha256(t.encode()).digest()
-                            for j in range(dim):
-                                out[i, j] = (h[j % 32] / 255.0) - 0.5
-                        return out.squeeze(0) if len(texts) == 1 else out
-
+                logger.info("CrewMemory: sentence-transformers not available, using word-hash fallback embedder")
                 self._embedder = _FallbackEmbedder()
         return self._embedder
 
@@ -73,7 +80,10 @@ class CrewMemory:
             embeddings=[embedding],
             metadatas=[metadata],
             documents=[
-                f"Topic: {topic}\nTrend: {trend_payload}\nRisk: {risk_payload}\nContent: {content_payload}"
+                f"Topic: {topic}\n"
+                f"Trend: {trend_payload}\n"
+                f"Risk: {risk_payload}\n"
+                f"Content: {content_payload}"
             ],
         )
         logger.info("CrewMemory: stored research '%s' as %s", topic, doc_id)
@@ -94,8 +104,16 @@ class CrewMemory:
                 output.append(
                     {
                         "id": results["ids"][0][i],
-                        "metadata": results["metadatas"][0][i] if results["metadatas"] else {},
-                        "distance": results["distances"][0][i] if results["distances"] else 0.0,
+                        "metadata": (
+                            results["metadatas"][0][i]
+                            if results["metadatas"]
+                            else {}
+                        ),
+                        "distance": (
+                            results["distances"][0][i]
+                            if results["distances"]
+                            else 0.0
+                        ),
                     }
                 )
         return output

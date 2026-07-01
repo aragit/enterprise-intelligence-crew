@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from src.orchestration.risk_gate import RiskGate, RiskGateState
+from src.orchestration.risk_gate import RiskGate, run_risk_gate
 from src.schemas.payloads import TrendPayload, RiskPayload
 
 
 class TestRiskGate:
     @pytest.fixture
     def gate(self):
-        return RiskGate(threshold=0.7)
+        return RiskGate(threshold=0.7, max_iterations=3)
 
     @pytest.fixture
     def low_risk(self):
@@ -38,38 +38,51 @@ class TestRiskGate:
         assert decision == "approve"
         assert len(feedback) == 0
 
-    def test_reject_high_risk(self, gate, trend, high_risk):
+    def test_high_risk_loops_then_force_approve(self, gate, trend, high_risk):
         decision, feedback = gate.run(trend, high_risk)
-        assert decision == "reject"
-        assert len(feedback) > 0
+        assert decision == "approve"
+        assert len(feedback) >= 3
+        assert all("exceeds threshold" in f for f in feedback if "Iteration" in f)
 
-    def test_max_iterations_forces_approve(self, trend, high_risk):
-        gate = RiskGate(threshold=0.7)
-        state = RiskGateState(trend=trend, risk=high_risk, iteration=3, max_iterations=3)
-        decision = gate.evaluate(state)
+    def test_max_iterations_respected(self, trend, high_risk):
+        gate = RiskGate(threshold=0.7, max_iterations=1)
+        decision, feedback = gate.run(trend, high_risk)
+        assert decision == "approve"
+        assert len(feedback) >= 1
+
+    def test_reject_when_no_risk(self, gate, trend):
+        decision, feedback = gate.run(trend, None)
+        assert decision == "reject"
+        assert len(feedback) == 1
+
+    def test_run_with_dicts(self, gate):
+        trend_dict = {"trend_name": "test", "momentum_score": 0.5, "extracted_metrics": {}, "verified_sources": []}
+        risk_dict = {"is_safe": True, "risk_score": 0.9, "flagged_keywords": [], "required_revisions": ["fix"]}
+        decision, feedback = gate.run(trend_dict, risk_dict)
+        assert decision == "approve"
+        assert len(feedback) >= 3
+
+    def test_run_function_standalone(self, trend, low_risk):
+        decision, feedback = run_risk_gate(trend, low_risk)
         assert decision == "approve"
 
-    def test_evaluate_returns_reject_when_no_risk(self, gate, trend):
-        state = RiskGateState(trend=trend, risk=None)
-        decision = gate.evaluate(state)
+    def test_custom_threshold_lower(self, trend):
+        low = RiskPayload(is_safe=True, risk_score=0.5)
+        gate = RiskGate(threshold=0.3, max_iterations=2)
+        decision, feedback = gate.run(trend, low)
+        assert decision == "approve"
+        assert len(feedback) >= 2
+
+    def test_custom_threshold_higher(self, trend):
+        moderate = RiskPayload(is_safe=False, risk_score=0.6)
+        gate = RiskGate(threshold=0.7)
+        decision, _ = gate.run(trend, moderate)
+        assert decision == "approve"
+
+    def test_standalone_run_without_class(self, trend, low_risk):
+        decision, feedback = run_risk_gate(trend, low_risk)
+        assert decision == "approve"
+
+    def test_standalone_reject_no_risk(self, trend):
+        decision, feedback = run_risk_gate(trend, None)
         assert decision == "reject"
-
-    def test_step_analyze_to_evaluate(self, gate, trend, low_risk):
-        state = RiskGateState(trend=trend, risk=low_risk, phase="analyze")
-        state = gate.step(state)
-        assert state.phase == "evaluate_risk"
-
-    def test_step_evaluate_to_approve(self, gate, trend, low_risk):
-        state = RiskGateState(trend=trend, risk=low_risk, phase="evaluate_risk")
-        state = gate.step(state)
-        assert state.phase == "approve"
-
-    def test_step_evaluate_to_reject(self, gate, trend, high_risk):
-        state = RiskGateState(trend=trend, risk=high_risk, phase="evaluate_risk")
-        state = gate.step(state)
-        assert state.phase == "reject"
-
-    def test_step_approve_to_generate(self, gate, trend, low_risk):
-        state = RiskGateState(trend=trend, risk=low_risk, phase="approve")
-        state = gate.step(state)
-        assert state.phase == "generate"

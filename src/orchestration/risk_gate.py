@@ -1,79 +1,184 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
+from typing_extensions import TypedDict
 
-from src.schemas.payloads import TrendPayload, RiskPayload, ContentPayload
+from langgraph.graph import END, StateGraph
+
+from src.schemas.payloads import (
+    ContentPayload,
+    RiskPayload,
+    TrendPayload,
+)
 
 logger = logging.getLogger(__name__)
 
-State = Literal["analyze", "evaluate_risk", "approve", "reject", "generate", "done"]
-Decision = Literal["approve", "reject"]
+GATE_THRESHOLD = 0.7
+MAX_ITERATIONS = 3
 
 
-@dataclass
-class RiskGateState:
-    phase: State = "analyze"
-    trend: TrendPayload | None = None
-    risk: RiskPayload | None = None
-    content: ContentPayload | None = None
-    feedback: list[str] = field(default_factory=list)
-    iteration: int = 0
-    max_iterations: int = 3
+class _GateState(TypedDict):
+    phase: str
+    trend: dict[str, Any] | None
+    risk: dict[str, Any] | None
+    content: dict[str, Any] | None
+    feedback: list[str]
+    iteration: int
+    decision: str | None
+
+
+def _to_dict(obj: Any) -> dict[str, Any]:
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    if isinstance(obj, dict):
+        return obj
+    return {}
+
+
+def _analyze(state: _GateState) -> _GateState:
+    return {**state, "phase": "evaluate_risk"}
+
+
+def _evaluate(
+    state: _GateState, threshold: float, max_iterations: int
+) -> _GateState:
+    risk = state.get("risk")
+    if risk is None:
+        return {**state, "decision": "reject", "phase": "reject"}
+
+    score = risk.get("risk_score", 0)
+    iteration = state.get("iteration", 0)
+
+    logger.info(
+        "RiskGate: risk_score=%.2f threshold=%.2f iteration=%d/%d",
+        score,
+        threshold,
+        iteration,
+        max_iterations,
+    )
+
+    if iteration >= max_iterations:
+        logger.warning(
+            "RiskGate: max iterations (%d) reached, forcing approve",
+            max_iterations,
+        )
+        return {**state, "decision": "approve", "phase": "approve"}
+
+    if score > threshold:
+        fb = list(state.get("feedback", []))
+        fb.append(
+            f"Iteration {iteration + 1}: "
+            f"risk_score {score} exceeds threshold {threshold}"
+        )
+        for rev in risk.get("required_revisions", []):
+            fb.append(rev)
+        return {
+            **state,
+            "decision": "reject",
+            "phase": "reject",
+            "feedback": fb,
+            "iteration": iteration + 1,
+        }
+
+    return {**state, "decision": "approve", "phase": "approve"}
+
+
+def _approve_node(state: _GateState) -> _GateState:
+    return {**state, "phase": "generate"}
+
+
+def _reject_node(state: _GateState) -> _GateState:
+    return {**state, "phase": "analyze"}
+
+
+def _generate(state: _GateState) -> _GateState:
+    return {**state, "phase": "done"}
+
+
+def _route_decision(state: _GateState) -> Literal["approve", "reject"]:
+    return state.get("decision", "reject")
+
+
+def create_risk_graph(
+    threshold: float = GATE_THRESHOLD,
+    max_iterations: int = MAX_ITERATIONS,
+):
+    builder = StateGraph(_GateState)
+
+    builder.add_node("analyze", _analyze)
+    builder.add_node(
+        "evaluate_risk",
+        lambda s: _evaluate(s, threshold, max_iterations),
+    )
+    builder.add_node("approve", _approve_node)
+    builder.add_node("reject", _reject_node)
+    builder.add_node("generate", _generate)
+
+    builder.set_entry_point("analyze")
+    builder.add_edge("analyze", "evaluate_risk")
+    builder.add_conditional_edges(
+        "evaluate_risk",
+        _route_decision,
+        {"approve": "approve", "reject": "reject"},
+    )
+    builder.add_edge("approve", "generate")
+    builder.add_edge("reject", "analyze")
+    builder.add_edge("generate", END)
+
+    return builder.compile()
+
+
+_compiled_graphs: dict[tuple[float, int], Any] = {}
+
+
+def _get_graph(
+    threshold: float = GATE_THRESHOLD,
+    max_iterations: int = MAX_ITERATIONS,
+):
+    key = (threshold, max_iterations)
+    if key not in _compiled_graphs:
+        _compiled_graphs[key] = create_risk_graph(threshold, max_iterations)
+    return _compiled_graphs[key]
+
+
+def run_risk_gate(
+    trend: TrendPayload | RiskPayload | dict[str, Any],
+    risk: RiskPayload | dict[str, Any] | None,
+    threshold: float = GATE_THRESHOLD,
+    max_iterations: int = MAX_ITERATIONS,
+) -> tuple[str, list[str]]:
+    if risk is None:
+        return ("reject", ["No risk assessment available"])
+
+    graph = _get_graph(threshold, max_iterations)
+    initial: dict[str, Any] = {
+        "phase": "analyze",
+        "trend": _to_dict(trend),
+        "risk": _to_dict(risk),
+        "content": None,
+        "feedback": [],
+        "iteration": 0,
+        "decision": None,
+    }
+    result = graph.invoke(initial)
+    return (result.get("decision", "reject"), result.get("feedback", []))
 
 
 class RiskGate:
-    def __init__(self, threshold: float = 0.7):
+    def __init__(
+        self,
+        threshold: float = GATE_THRESHOLD,
+        max_iterations: int = MAX_ITERATIONS,
+    ):
         self.threshold = threshold
+        self.max_iterations = max_iterations
 
-    def evaluate(self, state: RiskGateState) -> Decision:
-        if state.risk is None:
-            return "reject"
-
-        score = state.risk.risk_score
-        logger.info("RiskGate: risk_score=%.2f threshold=%.2f", score, self.threshold)
-
-        if state.iteration >= state.max_iterations:
-            logger.warning("RiskGate: max iterations (%d) reached, forcing approve", state.max_iterations)
-            return "approve"
-
-        if score > self.threshold:
-            state.feedback.append(
-                f"Iteration {state.iteration + 1}: risk_score {score} exceeds threshold {self.threshold}"
-            )
-            if state.risk.required_revisions:
-                state.feedback.extend(state.risk.required_revisions)
-            state.iteration += 1
-            return "reject"
-
-        return "approve"
-
-    def step(self, state: RiskGateState) -> RiskGateState:
-        if state.phase == "analyze":
-            state.phase = "evaluate_risk"
-        elif state.phase == "evaluate_risk":
-            decision = self.evaluate(state)
-            if decision == "approve":
-                state.phase = "approve"
-            else:
-                state.phase = "reject"
-        elif state.phase == "approve":
-            state.phase = "generate"
-        elif state.phase == "reject":
-            state.phase = "analyze"
-        elif state.phase == "generate":
-            state.phase = "done"
-
-        return state
-
-    def run(self, trend: TrendPayload, risk: RiskPayload) -> tuple[Decision, list[str]]:
-        state = RiskGateState(trend=trend, risk=risk)
-        last_decision: Decision = "reject"
-
-        while state.phase != "done":
-            if state.phase == "evaluate_risk":
-                last_decision = self.evaluate(state)
-            state = self.step(state)
-
-        return (last_decision, state.feedback)
+    def run(
+        self,
+        trend: TrendPayload | dict[str, Any],
+        risk: RiskPayload | dict[str, Any],
+    ) -> tuple[str, list[str]]:
+        return run_risk_gate(
+            trend, risk, threshold=self.threshold, max_iterations=self.max_iterations
+        )

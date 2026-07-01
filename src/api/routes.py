@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import uuid
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -14,8 +17,29 @@ from src.config import settings
 
 router = APIRouter()
 
-_task_store: dict[str, dict[str, Any]] = {}
 _memory: CrewMemory | None = None
+_TASK_STORE_PATH = Path("data/task_store.json")
+
+
+def _load_task_store() -> dict[str, dict[str, Any]]:
+    if _TASK_STORE_PATH.exists():
+        try:
+            return json.loads(_TASK_STORE_PATH.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
+
+
+def _save_task_store(store: dict[str, dict[str, Any]]):
+    os.makedirs(str(_TASK_STORE_PATH.parent), exist_ok=True)
+    _TASK_STORE_PATH.write_text(json.dumps(store, indent=2, default=str))
+
+
+_task_store: dict[str, dict[str, Any]] = _load_task_store()
+
+
+def _flush_store():
+    _save_task_store(_task_store)
 
 
 def _get_memory() -> CrewMemory:
@@ -44,7 +68,11 @@ async def health():
     return {
         "status": "ok" if llm_health is None else "degraded",
         "llm_provider": settings.llm_provider,
-        "llm_model": settings.ollama_model if settings.llm_provider == "ollama" else settings.openai_model,
+        "llm_model": (
+            settings.ollama_model
+            if settings.llm_provider == "ollama"
+            else settings.openai_model
+        ),
         "llm_health": llm_health or "healthy",
     }
 
@@ -53,35 +81,51 @@ async def health():
 async def crew_run(request: CrewRunRequest):
     task_id = str(uuid.uuid4())
     _task_store[task_id] = {"status": "running", "result": None}
+    _flush_store()
 
     health_msg = check_llm_health()
     if health_msg:
         _task_store[task_id] = {"status": "failed", "result": None}
+        _flush_store()
         raise HTTPException(status_code=503, detail=health_msg)
 
     try:
         loop = asyncio.get_event_loop()
-        logger.info("Crew run sync: task_id=%s query_context='%s'", task_id, request.query_context[:60])
-        result = await loop.run_in_executor(None, _execute_crew, request.query_context)
+        logger.info(
+            "Crew run sync: task_id=%s query='%s'",
+            task_id,
+            request.query_context[:60],
+        )
+        result = await loop.run_in_executor(
+            None, _execute_crew, request.query_context
+        )
         _task_store[task_id] = {"status": "completed", "result": result}
+        _flush_store()
         logger.info("Crew run sync completed: task_id=%s", task_id)
-        return CrewRunResponse(task_id=task_id, status="completed", result=result)
+        return CrewRunResponse(
+            task_id=task_id, status="completed", result=result
+        )
     except HTTPException:
         raise
     except Exception as e:
         logger.error("Crew run sync failed: task_id=%s error=%s", task_id, e)
         _task_store[task_id] = {"status": "failed", "result": None}
-        raise HTTPException(status_code=500, detail=f"Crew execution failed: {e}")
+        _flush_store()
+        raise HTTPException(
+            status_code=500, detail=f"Crew execution failed: {e}"
+        )
 
 
 @router.post("/crew/run/async", response_model=CrewRunResponse)
 async def crew_run_async(request: CrewRunRequest):
     task_id = str(uuid.uuid4())
     _task_store[task_id] = {"status": "pending", "result": None}
+    _flush_store()
 
     health_msg = check_llm_health()
     if health_msg:
         _task_store[task_id] = {"status": "failed", "result": None}
+        _flush_store()
         raise HTTPException(status_code=503, detail=health_msg)
 
     asyncio.create_task(_background_run(task_id, request.query_context))
@@ -92,8 +136,14 @@ async def crew_run_async(request: CrewRunRequest):
 async def crew_status(task_id: str):
     entry = _task_store.get(task_id)
     if entry is None:
-        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
-    return CrewRunResponse(task_id=task_id, status=entry["status"], result=entry.get("result"))
+        raise HTTPException(
+            status_code=404, detail=f"Task {task_id} not found"
+        )
+    return CrewRunResponse(
+        task_id=task_id,
+        status=entry["status"],
+        result=entry.get("result"),
+    )
 
 
 @router.get("/crew/memory/{topic}")
@@ -114,19 +164,34 @@ def _execute_crew(query_context: str) -> dict:
     if settings.llm_provider == "mock":
         return {
             "output": f"[mock] Crew run complete for: {query_context[:60]}",
-            "trend": {"trend_name": "Mock Trend", "momentum_score": 0.5},
+            "trend": {
+                "trend_name": "Mock Trend",
+                "momentum_score": 0.5,
+            },
             "risk": {"is_safe": True, "risk_score": 0.1},
-            "content": {"headline": "Mock Headline", "body_content": "Mock body.", "metadata_tags": ["mock"]},
+            "content": {
+                "headline": "Mock Headline",
+                "body_content": "Mock body.",
+                "metadata_tags": ["mock"],
+            },
+            "gate_decision": "approve",
+            "gate_feedback": [],
         }
-    crew = EnterpriseIntelligenceCrew().build_crew()
-    output = crew.kickoff(inputs={"query_context": query_context})
-    return {"output": str(output)}
+    result = EnterpriseIntelligenceCrew().run_pipeline(query_context)
+    return result
 
 
 async def _background_run(task_id: str, query_context: str):
     try:
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, _execute_crew, query_context)
+        result = await loop.run_in_executor(
+            None, _execute_crew, query_context
+        )
         _task_store[task_id] = {"status": "completed", "result": result}
+        _flush_store()
     except Exception as e:
-        _task_store[task_id] = {"status": "failed", "result": {"error": str(e)}}
+        _task_store[task_id] = {
+            "status": "failed",
+            "result": {"error": str(e)},
+        }
+        _flush_store()

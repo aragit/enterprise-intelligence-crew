@@ -4,7 +4,7 @@ import pytest
 
 from src.agents.intelligence_crew import EnterpriseIntelligenceCrew
 from src.config import settings
-from src.llm_factory import MockProvider
+from src.llm import MockProvider
 from src.schemas.payloads import TrendPayload, RiskPayload, ContentPayload
 from src.orchestration.risk_gate import RiskGate
 
