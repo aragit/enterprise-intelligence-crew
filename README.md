@@ -31,13 +31,21 @@
 
 ## Overview
 
-Enterprise Intelligence Crew is a **three-agent sequential pipeline** powered by [CrewAI](https://crewai.com) that takes a user query through the full intelligence lifecycle:
+Enterprise Intelligence Crew is a **preemptive, stateful, multi-layer orchestration system** that breaks the standard CrewAI `crew.kickoff()` monolith into three isolated **mini-crew executions**, each validated by a gate before data flows downstream. All LLM inference runs **locally** via Ollama — no API keys, no cloud dependency, no data egress. A **dual-gate risk validation system** enforces quality guardrails between stages, with feedback injection and circuit-breaker retry logic. ChromaDB with sentence transformers persists research for semantic recall.
 
-1. **Trend Investigation** — Web search, scrape, sentiment analysis
-2. **Risk Assessment** — Bias detection, compliance scoring
-3. **Content Generation** — SEO optimization, summarization
+<br>
 
-All LLM inference runs **locally** via [Ollama](https://ollama.ai) — no API keys, no cloud dependency, no data egress. A **dual-gate risk validation system** enforces quality guardrails between stages: a lightweight pure-Python gate validates `TrendPayload` before it reaches the RiskAnalyst, and a [LangGraph](https://langchain-ai.github.io/langgraph/) `StateGraph` gate evaluates `RiskPayload` before content generation. Both gates support feedback injection with circuit-breaker retry logic. [ChromaDB](https://www.trychroma.com/) with sentence transformers persists research for semantic recall.
+> 💡 **Verdict:** This architecture trades **simplicity and speed** for **correctness, auditability, and local privacy**.
+
+**Ideal for:**
+- **Regulated environments** (healthcare, finance) where data cannot leave the network
+- **High-stakes content generation** where a bad output has real cost (compliance, brand risk)
+- **Teams that value testability** and need CI to run without LLM infrastructure
+
+**Over-engineered for:**
+- Rapid prototyping where a standard `crew.kickoff()` is sufficient
+- High-throughput, low-latency use cases (gate overhead and sequential mini-crews are bottlenecks)
+- Multi-instance deployments (file-based task store and local ChromaDB don't scale horizontally)
 
 ---
 
@@ -138,44 +146,27 @@ All payloads use `str` URLs (not `HttpUrl`) to avoid `json.dumps()` serializatio
 
 ### LLM Layer
 
-#### 1. `OllamaNativeLLM` (`src/llm.py`)
-Custom provider extending `crewai.llms.base_llm.BaseLLM` that calls Ollama's **native `/api/chat`** endpoint directly via `httpx`.
+**CrewAI-Compatible Adapters:**
 
-**Why native?** CrewAI 1.14 routes `ollama/` models through `OpenAICompatibleCompletion` which requires `/v1/chat/completions` — unavailable on Ollama ≤0.24. This adapter bypasses that entirely.
+- **`OllamaNativeLLM`** — Extends `crewai.llms.base_llm.BaseLLM`, calls Ollama's native `/api/chat` directly via `httpx`. Bypasses CrewAI's `OpenAICompatibleCompletion` (which requires `/v1/chat/completions`, unavailable on Ollama ≤0.24). Supports tool calling, structured output, stop words, streaming, and usage extraction. Context window: 131,072 tokens.
+- **`MockNativeLLM`** — Returns schema-valid JSON for `response_model`. Enables the full 76-test suite without any LLM connection.
 
-| Feature | Support |
-|---|---|
-| Sync (`call`) / Async (`acall`) | ✅ |
-| Tool calling | ✅ |
-| Structured output (`response_model`) | ✅ |
-| Stop words | ✅ |
-| Streaming | ✅ |
-| Usage extraction (`prompt_eval_count` / `eval_count`) | ✅ |
-| Health probes (`list_available_models`, `check_model_exists`) | ✅ |
-| Context window | 131,072 tokens |
+**Standalone Providers** (for direct use outside CrewAI):
 
-#### 2. `MockNativeLLM` (`src/llm.py`)
-CrewAI-compatible mock provider that returns valid JSON matching the `response_model` schema (when provided) or a generic valid JSON dict. Used by `_make_llm()` when `LLM_PROVIDER=mock`. Enables full pipeline testing (76 tests) without any LLM connection.
+- `BaseLLMProvider` (ABC) → `OllamaProvider`, `OpenAIProvider`, `MockProvider`
 
-#### 3. Standalone Provider Hierarchy (`src/llm.py`)
-Three non-CrewAI providers (`OllamaProvider`, `OpenAIProvider`, `MockProvider`) following the `BaseLLMProvider` interface for direct use outside CrewAI tasks.
+Provider selection is controlled by `LLM_PROVIDER` env var (`ollama` | `openai` | `mock`).
 
-### Risk Gate (Dual-Gate System)
+---
 
-The risk validation system consists of two gates with different implementations:
+### Memory & Persistence
 
-**Gate 1: `run_trend_gate()`** (`src/orchestration/risk_gate.py`)
-- Pure Python validator (no LangGraph overhead)
-- Checks: `momentum_score` range (0.0–1.0), non-empty `verified_sources`, non-empty `extracted_metrics`, non-empty `trend_name`
-- Lightweight: runs in <1ms
+`CrewMemory` replaces CrewAI's internal memory (which defaults to OpenAI `gpt-4o-mini` extraction, violating the local-only constraint):
 
-**Gate 2: `run_risk_gate()`** (`src/orchestration/risk_gate.py`)
-- LangGraph `StateGraph` with 5 nodes: `_analyze → _evaluate → approve | reject → _generate → END`
-- Reject loop: risk > threshold (0.7) → feedback + re-evaluate
-- `max_iterations` exceeded → force-approve (circuit breaker)
-
-**Feedback Loop:** Both gates return `(decision: str, feedback: list[str])`. On rejection, feedback is injected into the agent's task description via `{feedback}` placeholder in `crew_config.yaml`, triggering a rerun with corrected context.
-
+- **Backend:** `chromadb.PersistentClient` with `hnsw:space = "cosine"`, collection `enterprise_research`
+- **Embeddings:** `sentence-transformers/all-MiniLM-L6-v2` with a `_FallbackEmbedder` (384-dim word-hash) if the dependency is missing
+- **API:** FastAPI endpoint `/crew/memory/{topic}` performs semantic search
+- **Storage:** Full pipeline result is embedded and persisted after Copywriter completion
 ---
 
 ## API
