@@ -96,14 +96,12 @@ API surface. FastAPI with 6 endpoints (/health, /crew/run, /crew/run/async, /cre
 | -- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1  | **Fault Isolation**              | Each agent runs in its own mini-crew. A hallucinated TrendPayload cannot silently poison the RiskAnalyst or Copywriter.                       |
 | 2  | **Data Integrity by Contract**   | Pydantic gates enforce `TrendPayload`/`RiskPayload` structure before downstream execution. Bad data is caught, not propagated.                |
-| 3  | **Fully Local / Zero Cloud**     | No API keys, no data egress, no OpenAI dependency. Runs entirely on Ollama. Critical for air-gapped or privacy-sensitive deployments.         |
-| 4  | **Provider Agnostic**            | `OllamaNativeLLM` + `OpenAIProvider` + `MockNativeLLM` — swap providers via env var without touching agent code.                              |
-| 5  | **Testable Without LLM**         | `MockNativeLLM` returns schema-valid JSON. 76 tests run in CI with no network, no GPU, no Ollama instance.                                    |
-| 6  | **Resilient to Output Drift**    | 4-tier `_extract_payload()` handles format variations across Ollama, OpenAI, and CrewAI versions.                                             |
-| 7  | **Auditable State Machine**      | `PipelineState` is explicit and mutable. Every feedback injection and retry is logged and traceable — unlike CrewAI's hidden internal memory. |
-| 8  | **Autonomous Retry with Safety** | Feedback loops + circuit breaker (`max_iterations=3`) let the system self-correct without infinite loops or human intervention.               |
-| 9  | **No Vendor Lock-in on Memory**  | Custom `CrewMemory` replaces CrewAI's default OpenAI-based memory extraction. ChromaDB + sentence-transformers is fully open-source.          |
-| 10 | **Cost Control**                 | Local inference eliminates per-token cloud LLM costs.                                                                                         |
+| 3  | **Provider Agnostic**            | `OllamaNativeLLM` + `OpenAIProvider` + `MockNativeLLM` — swap providers via env var without touching agent code.                              |
+| 4  | **Resilient to Output Drift**    | 4-tier `_extract_payload()` handles format variations across Ollama, OpenAI, and CrewAI versions.                                             |
+| 5  | **Auditable State Machine**      | `PipelineState` is explicit and mutable. Every feedback injection and retry is logged and traceable — unlike CrewAI's hidden internal memory. |
+| 6  | **Autonomous Retry with Safety** | Feedback loops + circuit breaker (`max_iterations=3`) let the system self-correct without infinite loops or human intervention.               |
+| 7  | **No Vendor Lock-in on Memory**  | Custom `CrewMemory` replaces CrewAI's default OpenAI-based memory extraction. ChromaDB + sentence-transformers is fully open-source.          |
+| 8 | **Cost Control**                 | Local inference eliminates per-token cloud LLM costs.                                                                                         |
 
 
 ### Tool Arsenal
