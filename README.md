@@ -157,7 +157,7 @@ All payloads use `str` URLs (not `HttpUrl`) to avoid `json.dumps()` serializatio
 
 Provider selection is controlled by `LLM_PROVIDER` env var (`ollama` | `openai` | `mock`).
 
----
+
 
 ### Memory & Persistence
 
