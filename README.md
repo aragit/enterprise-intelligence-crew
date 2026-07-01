@@ -84,11 +84,16 @@ Preemptive mini-crew orchestration. Instead of a single crew.kickoff() monolith,
 | 2     | RiskAnalyst       | BiasDetector, Validator                  | `RiskPayload`    | **Gate 2** — LangGraph `StateGraph` (5-node compiled graph) |
 | 3     | Copywriter        | SEOOptimizer, Summarizer                 | `ContentPayload` | —                                                           |
 
-Dual-gate validation. Gate 1 checks TrendPayload bounds (momentum_score 0.0–1.0), non-empty sources, and metrics. Gate 2 evaluates risk_score against threshold 0.7 via a compiled LangGraph loop (analyze → evaluate_risk → [approve|reject]). Both gates support feedback injection: rejected outputs trigger agent rerun with contextual feedback, up to max_iterations=3 before circuit-breaker force-approval.
-Schema-aware extraction. _extract_payload() implements a 4-tier fallback (direct Pydantic → CrewOutput traversal → JSON string → raw dict) to handle output format drift across LLM providers.
-Local-only LLM layer. OllamaNativeLLM bypasses CrewAI's OpenAI-compatible router and calls Ollama's native /api/chat directly via httpx. Supports tool calling, structured output, and 131K context. MockNativeLLM enables the full 76-test suite without any LLM connection. Provider selection via LLM_PROVIDER env var (ollama | openai | mock).
-Memory. CrewMemory replaces CrewAI's internal memory (which defaults to OpenAI extraction) with ChromaDB + all-MiniLM-L6-v2 embeddings — fully local, zero API keys.
-API surface. FastAPI with 6 endpoints (/health, /crew/run, /crew/run/async, /crew/status/{id}, /crew/memory/{topic}, /metrics). Task state persisted via fcntl-locked JSON. Prometheus instrumentation and Loguru rotation included.
+<br>
+
+- **Dual-gate validation.** Gate 1 checks TrendPayload bounds (momentum_score 0.0–1.0), non-empty sources, and metrics. Gate 2 evaluates risk_score against threshold 0.7 via a compiled LangGraph loop (analyze → evaluate_risk → [approve|reject]). Both gates support feedback injection: rejected outputs trigger agent rerun with contextual feedback, up to max_iterations=3 before circuit-breaker force-approval.
+
+- **Schema-aware extraction.** _extract_payload() implements a 4-tier fallback (direct Pydantic → CrewOutput traversal → JSON string → raw dict) to handle output format drift across LLM providers.
+
+
+- **Memory.**  CrewMemory replaces CrewAI's internal memory (which defaults to OpenAI extraction) with ChromaDB + all-MiniLM-L6-v2 embeddings — fully local, zero API keys.
+
+- **API surface.** FastAPI with 6 endpoints (/health, /crew/run, /crew/run/async, /crew/status/{id}, /crew/memory/{topic}, /metrics). Task state persisted via fcntl-locked JSON. Prometheus instrumentation and Loguru rotation included.
 
 **Advantages**
 
