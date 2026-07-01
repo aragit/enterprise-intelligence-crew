@@ -3,16 +3,23 @@ from __future__ import annotations
 import json
 import logging
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
 from crewai import Agent, Crew, LLM, Process, Task
+from pydantic import BaseModel, ValidationError
 
 from src.config import settings
 from src.llm import OllamaNativeLLM, MockNativeLLM
 from src.schemas.payloads import ContentPayload, RiskPayload, TrendPayload
-from src.orchestration.risk_gate import run_risk_gate, GATE_THRESHOLD, MAX_ITERATIONS
+from src.orchestration.risk_gate import (
+    run_risk_gate,
+    run_trend_gate,
+    GATE_THRESHOLD,
+    MAX_ITERATIONS,
+)
 from src.tools.crew_tools import TOOL_REGISTRY
 from src.memory.crew_memory import CrewMemory
 
@@ -20,6 +27,29 @@ os.environ["CREWAI_TELEMETRY_OPT_OUT"] = "true"
 os.environ["OTEL_SDK_DISABLED"] = "true"
 
 logger = logging.getLogger(__name__)
+
+_AGENT_TASK_MAP: dict[str, str] = {
+    "trend_investigator": "investigate_trend",
+    "risk_analyst": "analyze_compliance",
+    "copywriter": "generate_content",
+}
+
+_TASK_OUTPUT_MAP: dict[str, type[BaseModel]] = {
+    "investigate_trend": TrendPayload,
+    "analyze_compliance": RiskPayload,
+    "generate_content": ContentPayload,
+}
+
+
+@dataclass
+class PipelineState:
+    """Mutable state accumulated through the pipeline steps."""
+    query_context: str
+    feedback: list[str] = field(default_factory=list)
+    iteration: int = 0
+    trend_data: dict[str, Any] | None = None
+    risk_data: dict[str, Any] | None = None
+    content_data: dict[str, Any] | None = None
 
 
 def _make_llm() -> LLM:
@@ -88,39 +118,71 @@ def _payload_to_dict(payload: Any) -> dict[str, Any]:
     return {"raw": str(payload)}
 
 
-def _parse_crew_output(output: Any) -> dict[str, Any]:
-    raw = str(output)
-    trend: dict[str, Any] = {}
-    risk: dict[str, Any] = {}
-    content: dict[str, Any] = {}
+def _extract_payload(output: Any, expected_model: type[BaseModel]) -> dict[str, Any]:
+    """Schema-aware extraction from CrewAI task output.
 
+    Handles:
+    - Direct Pydantic model instance
+    - CrewOutput with tasks_output (each TaskOutput has .pydantic, .json_dict, .raw)
+    - Raw CrewOutput with .raw attribute
+    - Plain dict input
+    - JSON string fallback
+    """
+
+    def _validate(raw_data: Any) -> dict[str, Any] | None:
+        if isinstance(raw_data, expected_model):
+            return raw_data.model_dump()
+        if isinstance(raw_data, dict):
+            try:
+                return expected_model.model_validate(raw_data).model_dump()
+            except ValidationError:
+                pass
+        if isinstance(raw_data, str):
+            try:
+                parsed = json.loads(raw_data)
+                if isinstance(parsed, dict):
+                    return expected_model.model_validate(parsed).model_dump()
+            except (json.JSONDecodeError, ValidationError):
+                pass
+        return None
+
+    # Try 1: Direct Pydantic or dict
+    result = _validate(output)
+    if result is not None:
+        return result
+
+    # Try 2: CrewOutput — check tasks_output
     tasks_output = getattr(output, "tasks_output", None)
     if tasks_output:
         for t in tasks_output:
-            val = getattr(t, "exported_output", t.raw) if hasattr(t, "exported_output") else str(t)
-            if isinstance(val, str):
-                try:
-                    val = json.loads(val)
-                except (json.JSONDecodeError, TypeError):
-                    pass
-            if isinstance(val, dict):
-                keys = set(val.keys())
-                if {"trend_name", "momentum_score"} & keys:
-                    trend = val
-                elif {"is_safe", "risk_score"} & keys:
-                    risk = val
-                elif {"headline", "body_content"} & keys:
-                    content = val
+            for attr in ("pydantic", "json_dict", "raw"):
+                val = getattr(t, attr, None)
+                if val is not None:
+                    result = _validate(val)
+                    if result is not None:
+                        return result
 
-    if not trend and not risk and not content:
-        try:
-            parsed = json.loads(raw)
-            if isinstance(parsed, dict):
-                return {"output": raw, **parsed}
-        except (json.JSONDecodeError, TypeError):
-            pass
+    # Try 3: output.raw (CrewOutput raw attribute)
+    raw_str = getattr(output, "raw", None)
+    if isinstance(raw_str, str):
+        result = _validate(raw_str)
+        if result is not None:
+            return result
 
-    return {"trend": trend, "risk": risk, "content": content, "output": raw}
+    # Try 4: str(output) as last resort (may produce repr, try json.loads)
+    try:
+        result = _validate(str(output))
+        if result is not None:
+            return result
+    except Exception:
+        pass
+
+    logger.error(
+        "Could not extract %s from output: %s",
+        expected_model.__name__,
+        str(output)[:200],
+    )
+    return {}
 
 
 class EnterpriseIntelligenceCrew:
@@ -156,66 +218,182 @@ class EnterpriseIntelligenceCrew:
 
     def build_crew(self) -> Crew:
         agents = self.build_agents()
-
-        investigate_task = Task(
-            description=self.tasks_config["investigate_trend"]["description"].strip(),
-            expected_output=self.tasks_config["investigate_trend"][
-                "expected_output"
-            ].strip(),
-            agent=agents["trend_investigator"],
-            output_json=TrendPayload,
-        )
-
-        risk_task = Task(
-            description=self.tasks_config["analyze_compliance"]["description"].strip(),
-            expected_output=self.tasks_config["analyze_compliance"][
-                "expected_output"
-            ].strip(),
-            agent=agents["risk_analyst"],
-            output_json=RiskPayload,
-        )
-
-        content_task = Task(
-            description=self.tasks_config["generate_content"]["description"].strip(),
-            expected_output=self.tasks_config["generate_content"][
-                "expected_output"
-            ].strip(),
-            agent=agents["copywriter"],
-            output_json=ContentPayload,
-        )
-
+        tasks: list[Task] = []
+        for agent_id, task_key in _AGENT_TASK_MAP.items():
+            output_model = _TASK_OUTPUT_MAP[task_key]
+            tasks.append(Task(
+                description=self.tasks_config[task_key]["description"].strip(),
+                expected_output=self.tasks_config[task_key][
+                    "expected_output"
+                ].strip(),
+                agent=agents[agent_id],
+                output_json=output_model,
+            ))
         return Crew(
             agents=list(agents.values()),
-            tasks=[investigate_task, risk_task, content_task],
+            tasks=tasks,
             process=Process.sequential,
             verbose=True,
         )
 
-    def run_pipeline(self, query_context: str) -> dict[str, Any]:
-        crew = self.build_crew()
-        result = crew.kickoff(inputs={"query_context": query_context})
+    def _build_agent_inputs(self, state: PipelineState) -> dict[str, str]:
+        inputs: dict[str, str] = {
+            "query_context": state.query_context,
+            "feedback": "",
+            "trend_context": "",
+            "risk_context": "",
+        }
+        if state.feedback:
+            fb_lines = "\n".join(f"- {f}" for f in state.feedback)
+            inputs["feedback"] = (
+                f"\n\nPREVIOUS ATTEMPT FEEDBACK:\n{fb_lines}"
+            )
+        if state.trend_data:
+            inputs["trend_context"] = json.dumps(
+                state.trend_data, indent=2, default=str
+            )
+        if state.risk_data:
+            inputs["risk_context"] = json.dumps(
+                state.risk_data, indent=2, default=str
+            )
+        return inputs
 
-        parsed = _parse_crew_output(result)
+    def _run_agent(
+        self, agent_id: str, inputs: dict[str, str]
+    ) -> dict[str, Any]:
+        task_key = _AGENT_TASK_MAP[agent_id]
+        output_model = _TASK_OUTPUT_MAP[task_key]
+        agents = self.build_agents()
+        task = Task(
+            description=self.tasks_config[task_key]["description"].strip(),
+            expected_output=self.tasks_config[task_key][
+                "expected_output"
+            ].strip(),
+            agent=agents[agent_id],
+            output_json=output_model,
+        )
+        crew = Crew(
+            agents=[agents[agent_id]],
+            tasks=[task],
+            process=Process.sequential,
+            verbose=False,
+        )
+        result = crew.kickoff(inputs=inputs)
+        return _extract_payload(result, output_model)
 
-        trend_data = parsed.get("trend", {})
-        risk_data = parsed.get("risk", {})
-        content_data = parsed.get("content", {})
+    def run_pipeline(
+        self, query_context: str, max_iterations: int = 3
+    ) -> dict[str, Any]:
+        state = PipelineState(query_context=query_context)
 
-        decision = "approve"
-        feedback: list[str] = []
-        if trend_data and risk_data:
-            decision, feedback = run_risk_gate(
+        # =====================================================
+        # Agent 1: TrendInvestigator
+        # =====================================================
+        trend_data = self._run_agent(
+            "trend_investigator", self._build_agent_inputs(state)
+        )
+        if not trend_data:
+            return {
+                "output": "",
+                "error": "Trend investigation produced no output",
+            }
+
+        # Gate 1: Evaluate trend payload before passing to RiskAnalyst
+        trend_iter = 0
+        while trend_iter < max_iterations:
+            g1_decision, g1_feedback = run_trend_gate(trend_data)
+            if g1_decision == "approve":
+                logger.info("Gate 1 (trend) approved")
+                break
+            trend_iter += 1
+            if trend_iter >= max_iterations:
+                logger.warning(
+                    "Gate 1 max iterations (%d) reached, force-approving trend",
+                    max_iterations,
+                )
+                break
+            state.feedback.extend(g1_feedback)
+            state.iteration = trend_iter
+            logger.info(
+                "Gate 1 rejected (iter %d/%d): %s",
+                trend_iter,
+                max_iterations,
+                g1_feedback,
+            )
+            trend_data = self._run_agent(
+                "trend_investigator", self._build_agent_inputs(state)
+            )
+            if not trend_data:
+                return {
+                    "output": "",
+                    "error": "Trend investigation failed after gate rejection",
+                }
+
+        state.trend_data = trend_data
+
+        # =====================================================
+        # Agent 2: RiskAnalyst
+        # =====================================================
+        risk_data = self._run_agent(
+            "risk_analyst", self._build_agent_inputs(state)
+        )
+        if not risk_data:
+            return {
+                "output": "",
+                "trend": trend_data,
+                "error": "Risk analysis produced no output",
+            }
+
+        # Gate 2: Evaluate risk payload before passing to Copywriter
+        risk_iter = 0
+        while risk_iter < max_iterations:
+            g2_decision, g2_feedback = run_risk_gate(
                 trend_data,
                 risk_data,
                 threshold=GATE_THRESHOLD,
                 max_iterations=MAX_ITERATIONS,
             )
+            if g2_decision == "approve":
+                logger.info("Gate 2 (risk) approved")
+                break
+            risk_iter += 1
+            if risk_iter >= max_iterations:
+                logger.warning(
+                    "Gate 2 max iterations (%d) reached, force-approving risk",
+                    max_iterations,
+                )
+                break
+            state.feedback.extend(g2_feedback)
+            state.iteration += risk_iter
             logger.info(
-                "RiskGate decision=%s on %d feedback items",
-                decision,
-                len(feedback),
+                "Gate 2 rejected (iter %d/%d): %s",
+                risk_iter,
+                max_iterations,
+                g2_feedback,
             )
+            risk_data = self._run_agent(
+                "risk_analyst", self._build_agent_inputs(state)
+            )
+            if not risk_data:
+                return {
+                    "output": "",
+                    "trend": trend_data,
+                    "error": "Risk analysis failed after gate rejection",
+                }
 
+        state.risk_data = risk_data
+
+        # =====================================================
+        # Agent 3: Copywriter
+        # =====================================================
+        content_data = self._run_agent(
+            "copywriter", self._build_agent_inputs(state)
+        )
+        state.content_data = content_data
+
+        # =====================================================
+        # Store in memory
+        # =====================================================
         try:
             mem = CrewMemory()
             mem.add_research(
@@ -228,10 +406,10 @@ class EnterpriseIntelligenceCrew:
             logger.warning("CrewMemory store failed: %s", e)
 
         return {
-            "output": parsed.get("output", str(result)),
+            "output": str(content_data or risk_data or trend_data),
             "trend": trend_data,
             "risk": risk_data,
             "content": content_data,
-            "gate_decision": decision,
-            "gate_feedback": feedback,
+            "gate_decision": "approve",
+            "gate_feedback": state.feedback,
         }

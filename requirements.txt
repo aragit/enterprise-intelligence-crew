@@ -5,8 +5,6 @@ crewai-tools>=0.60.0
 # --- State, Schema Validation & Intelligence Layer ---
 pydantic>=2.7.0
 pydantic-settings>=2.2.0
-langchain>=0.3.0
-langchain-chroma>=0.1.0
 chromadb>=0.5.0
 
 # --- LLM Providers ---

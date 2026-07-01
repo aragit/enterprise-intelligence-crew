@@ -165,6 +165,44 @@ def run_risk_gate(
     return (result.get("decision", "reject"), result.get("feedback", []))
 
 
+def run_trend_gate(
+    trend: TrendPayload | dict[str, Any] | None,
+    threshold: float = GATE_THRESHOLD,
+) -> tuple[str, list[str]]:
+    """Evaluate a trend payload before it reaches RiskAnalyst.
+    
+    Checks:
+    - momentum_score is in valid range (0.0–1.0)
+    - verified_sources is non-empty
+    - extracted_metrics is non-empty
+    """
+    if trend is None:
+        return ("reject", ["No trend data to evaluate"])
+
+    data = _to_dict(trend)
+    feedback: list[str] = []
+
+    score = data.get("momentum_score", 0)
+    if not isinstance(score, (int, float)) or score < 0 or score > 1:
+        feedback.append(f"Invalid momentum_score: {score} (must be 0.0–1.0)")
+
+    sources = data.get("verified_sources", [])
+    if not sources:
+        feedback.append("No verified sources provided")
+
+    metrics = data.get("extracted_metrics", {})
+    if not metrics:
+        feedback.append("No extracted metrics provided")
+
+    trend_name = data.get("trend_name", "")
+    if not trend_name or not trend_name.strip():
+        feedback.append("Trend name is empty")
+
+    if feedback:
+        return ("reject", feedback)
+    return ("approve", [])
+
+
 class RiskGate:
     def __init__(
         self,

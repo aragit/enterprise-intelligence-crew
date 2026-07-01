@@ -32,11 +32,14 @@ tasks:
     description: >
       Scan input technical vectors and live data sources for target keywords or industry signals.
       Extract a cohesive analysis of the trend, supporting source metrics, and quantitative momentum.
+      {feedback}
     expected_output: >
       A highly structured data payload isolating the trend name, associated metrics, and validated source links.
 
   analyze_compliance:
     description: >
+      Trend data: {trend_context}
+      {feedback}
       Review the extracted trend payload for hallucinations, corporate liability markers, and technical inaccuracies.
       Flag any non-compliant elements or required content modifications.
     expected_output: >
@@ -44,6 +47,9 @@ tasks:
 
   generate_content:
     description: >
+      Trend data: {trend_context}
+      Risk assessment: {risk_context}
+      {feedback}
       Consume the fully validated trend asset and craft a highly refined corporate technical copy block 
       including targeted headlines, core text body, and corresponding indexing tags.
     expected_output: >
