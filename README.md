@@ -76,70 +76,35 @@ python3 -m pytest tests/ -v
 ---
 
 ## Architecture
+Preemptive mini-crew orchestration. Instead of a single crew.kickoff() monolith, the pipeline runs three isolated 1-agent, 1-task mini-crews sequentially. Each execution is validated by a gate before data flows downstream, preventing malformed outputs from poisoning downstream agents.
 
-```
-                                    ┌──────────────────┐
-                                    │   🧑‍💻 QUERY      │
-                                    │  (research topic) │
-                                    └────────┬─────────┘
-                                             │
-                    ┌──────────────────────────────────────────┐
-                    │         CREWAI PIPELINE                  │
-                    │     (3 mini-crews, preemptive gates)     │
-                    │                                          │
-                    │  ┌──────────────────────┐                │
-                    │  │ TrendInvestigator    │                │
-                    │  │  • Web Search (Duck) │                │
-                    │  │  • Web Scraper       │  TrendPayload  │
-                    │  │  • Sentiment Analyzer│───────▶        │
-                    │  └──────────┬───────────┘                │
-                    │             │                            │
-                    │         ┌───┴───┐                        │
-                    │         │ GATE 1│── Pure Python          │
-                    │         │(Trend)│── approve / reject     │
-                    │         └───┬───┘                        │
-                    │    reject   │ approve                    │
-                    │    ┌────────┘     │                      │
-                    │    ▼ (feedback)   ▼                      │
-                    │  ┌──────────────────────┐                │
-                    │  │ RiskAnalyst          │                │
-                    │  │  • Bias Detector     │  RiskPayload   │
-                    │  │  • Source Validator  │───────▶        │
-                    │  └──────────┬───────────┘                │
-                    │             │                            │
-                    │         ┌───┴───┐                        │
-                    │         │ GATE 2│── LangGraph StateGraph │
-                    │         │(Risk) │── approve / reject     │
-                    │         └───┬───┘                        │
-                    │    reject   │ approve                    │
-                    │    ┌────────┘     │                      │
-                    │    ▼ (feedback)   ▼                      │
-                    │  ┌──────────────────────┐                │
-                    │  │ Copywriter           │                │
-                    │  │  • SEO Optimizer     │ ContentPayload │
-                    │  │  • Summarizer        │───────▶        │
-                    │  └──────────────────────┘                │
-                    └──────────────────────────────────────────┘
-                                             │
-                                             ▼
-                              ┌──────────────────────────────┐
-                              │      CHROMADB MEMORY          │
-                              │  (all-MiniLM-L6-v2 embeddings)│
-                              │  Store & semantic retrieval   │
-                              └──────────────────────────────┘
-```
+| Stage | Agent             | Tools                                    | Output           | Gate                                                        |
+| ----- | ----------------- | ---------------------------------------- | ---------------- | ----------------------------------------------------------- |
+| 1     | TrendInvestigator | WebSearch, WebScraper, SentimentAnalyzer | `TrendPayload`   | **Gate 1** — Pure Python validator (<1ms)                   |
+| 2     | RiskAnalyst       | BiasDetector, Validator                  | `RiskPayload`    | **Gate 2** — LangGraph `StateGraph` (5-node compiled graph) |
+| 3     | Copywriter        | SEOOptimizer, Summarizer                 | `ContentPayload` | —                                                           |
 
-A **three-agent sequential CrewAI pipeline** using **per-agent mini-crews** with **preemptive dual-gate validation**. The pipeline breaks the standard `crew.kickoff()` monolith into three isolated agent executions, each validated by a gate before data flows downstream. Gate 1 (pure Python) validates `TrendPayload` structure and source quality. Gate 2 (LangGraph `StateGraph`) evaluates risk scores with a 5-node compiled graph. Both gates support feedback injection: rejected outputs trigger agent rerun with contextual feedback, up to `max_iterations=3` before circuit-breaker force-approval.
+Dual-gate validation. Gate 1 checks TrendPayload bounds (momentum_score 0.0–1.0), non-empty sources, and metrics. Gate 2 evaluates risk_score against threshold 0.7 via a compiled LangGraph loop (analyze → evaluate_risk → [approve|reject]). Both gates support feedback injection: rejected outputs trigger agent rerun with contextual feedback, up to max_iterations=3 before circuit-breaker force-approval.
+Schema-aware extraction. _extract_payload() implements a 4-tier fallback (direct Pydantic → CrewOutput traversal → JSON string → raw dict) to handle output format drift across LLM providers.
+Local-only LLM layer. OllamaNativeLLM bypasses CrewAI's OpenAI-compatible router and calls Ollama's native /api/chat directly via httpx. Supports tool calling, structured output, and 131K context. MockNativeLLM enables the full 76-test suite without any LLM connection. Provider selection via LLM_PROVIDER env var (ollama | openai | mock).
+Memory. CrewMemory replaces CrewAI's internal memory (which defaults to OpenAI extraction) with ChromaDB + all-MiniLM-L6-v2 embeddings — fully local, zero API keys.
+API surface. FastAPI with 6 endpoints (/health, /crew/run, /crew/run/async, /crew/status/{id}, /crew/memory/{topic}, /metrics). Task state persisted via fcntl-locked JSON. Prometheus instrumentation and Loguru rotation included.
 
-### Preemptive Execution Model
+**Advantages**
 
-Rather than a single `Crew(process=Process.sequential)`, each agent runs in its own 1-agent, 1-task mini-crew:
+| #  | Advantage                        | Why It Matters                                                                                                                                |
+| -- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1  | **Fault Isolation**              | Each agent runs in its own mini-crew. A hallucinated TrendPayload cannot silently poison the RiskAnalyst or Copywriter.                       |
+| 2  | **Data Integrity by Contract**   | Pydantic gates enforce `TrendPayload`/`RiskPayload` structure before downstream execution. Bad data is caught, not propagated.                |
+| 3  | **Fully Local / Zero Cloud**     | No API keys, no data egress, no OpenAI dependency. Runs entirely on Ollama. Critical for air-gapped or privacy-sensitive deployments.         |
+| 4  | **Provider Agnostic**            | `OllamaNativeLLM` + `OpenAIProvider` + `MockNativeLLM` — swap providers via env var without touching agent code.                              |
+| 5  | **Testable Without LLM**         | `MockNativeLLM` returns schema-valid JSON. 76 tests run in CI with no network, no GPU, no Ollama instance.                                    |
+| 6  | **Resilient to Output Drift**    | 4-tier `_extract_payload()` handles format variations across Ollama, OpenAI, and CrewAI versions.                                             |
+| 7  | **Auditable State Machine**      | `PipelineState` is explicit and mutable. Every feedback injection and retry is logged and traceable — unlike CrewAI's hidden internal memory. |
+| 8  | **Autonomous Retry with Safety** | Feedback loops + circuit breaker (`max_iterations=3`) let the system self-correct without infinite loops or human intervention.               |
+| 9  | **No Vendor Lock-in on Memory**  | Custom `CrewMemory` replaces CrewAI's default OpenAI-based memory extraction. ChromaDB + sentence-transformers is fully open-source.          |
+| 10 | **Cost Control**                 | Local inference eliminates per-token cloud LLM costs.                                                                                         |
 
-1. `_run_agent("trend_investigator")` → **Gate 1** (`run_trend_gate()`) → approve/reject
-2. `_run_agent("risk_analyst")` → **Gate 2** (`run_risk_gate()`) → approve/reject
-3. `_run_agent("copywriter")` → store in ChromaDB
-
-On gate rejection, feedback is injected via `{feedback}` placeholder in `crew_config.yaml` task descriptions, and the agent re-runs with corrective context. This replaces CrewAI's built-in inter-task context passing.
 
 ### Tool Arsenal
 
