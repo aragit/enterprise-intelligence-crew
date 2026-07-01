@@ -29,7 +29,7 @@ jobs:
           pip install -r requirements.txt --only-binary=:all: || true
           pip install crewai langgraph chromadb fastapi uvicorn pydantic pydantic-settings \
             httpx duckduckgo_search beautifulsoup4 trafilatura lxml \
-            textblob vaderSentiment textstat loguru \
+            textblob textstat loguru \
             prometheus-client prometheus-fastapi-instrumentator \
             python-dotenv numpy pytest pytest-asyncio pytest-cov responses
 

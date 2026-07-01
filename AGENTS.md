@@ -2,16 +2,16 @@
 
 ## Architecture
 
-Three-agent sequential CrewAI pipeline with manual risk gate:
+Three-agent sequential CrewAI pipeline with LangGraph risk gate:
 
 ```
 User Query → TrendInvestigator → RiskAnalyst → RiskGate → Copywriter → Output
 ```
 
-- **TrendInvestigator**: `src/tools/web_search.py` + `src/tools/web_scraper.py` + `src/tools/sentiment_analyzer.py` → searches/scrapes/analyzes → produces `TrendPayload`
-- **RiskAnalyst**: `src/tools/bias_detector.py` → detects bias in the trend output → produces `RiskPayload`
-- **RiskGate** (`src/risk_gate/risk_gate.py`): State machine (`analyze → evaluate → approve | reject → generate`) checking risk score + max-iteration guard
-- **Copywriter**: `src/tools/seo_optimizer.py` + `src/tools/summarizer.py` → generates `ContentPayload`
+- **TrendInvestigator**: 3 CrewAI tools (`WebSearchTool`, `WebScraperTool`, `SentimentAnalyzerTool`) → searches/scrapes/analyzes → produces `TrendPayload`
+- **RiskAnalyst**: 2 CrewAI tools (`BiasDetectorTool`, `ValidatorTool`) → detects bias + validates sources → produces `RiskPayload`
+- **RiskGate** (`src/orchestration/risk_gate.py`): LangGraph `StateGraph` (5 nodes: `_analyze` → `_evaluate` → approve | reject loop → `_generate` → END) — compiled graph with caching, checks risk score + max-iteration guard
+- **Copywriter**: 2 CrewAI tools (`SEOOptimizerTool`, `SummarizerTool`) → generates `ContentPayload`
 
 All three output contracts defined in `src/schemas/payloads.py`:
 - `TrendPayload` — `trend_name`, `momentum_score`, `extracted_metrics`, `verified_sources` (str list with URL validator)
@@ -44,7 +44,7 @@ Fails fast with actionable error messages listing available models.
 Routes by `settings.llm_provider`:
 - **`ollama`** → `OllamaNativeLLM(model=..., base_url=..., temperature=0.7)`
 - **`openai`** → `crewai.LLM(model=..., api_key=...)`
-- **`mock`** → `crewai.LLM(model="gpt-4o-mini", api_key="sk-mock-placeholder")`
+- **`mock`** → `MockNativeLLM(model="mock")` — returns valid JSON for structured output, no LLM needed
 
 ## Configuration (`src/config.py`)
 

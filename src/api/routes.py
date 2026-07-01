@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import json
 import os
 import uuid
@@ -24,7 +25,11 @@ _TASK_STORE_PATH = Path("data/task_store.json")
 def _load_task_store() -> dict[str, dict[str, Any]]:
     if _TASK_STORE_PATH.exists():
         try:
-            return json.loads(_TASK_STORE_PATH.read_text())
+            with open(_TASK_STORE_PATH) as f:
+                fcntl.flock(f, fcntl.LOCK_SH)
+                data = json.load(f)
+                fcntl.flock(f, fcntl.LOCK_UN)
+                return data
         except (json.JSONDecodeError, OSError):
             pass
     return {}
@@ -32,7 +37,14 @@ def _load_task_store() -> dict[str, dict[str, Any]]:
 
 def _save_task_store(store: dict[str, dict[str, Any]]):
     os.makedirs(str(_TASK_STORE_PATH.parent), exist_ok=True)
-    _TASK_STORE_PATH.write_text(json.dumps(store, indent=2, default=str))
+    tmp = _TASK_STORE_PATH.with_suffix(".tmp")
+    with open(tmp, "w") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        json.dump(store, f, indent=2, default=str)
+        f.flush()
+        os.fsync(f.fileno())
+        fcntl.flock(f, fcntl.LOCK_UN)
+    tmp.replace(_TASK_STORE_PATH)
 
 
 _task_store: dict[str, dict[str, Any]] = _load_task_store()

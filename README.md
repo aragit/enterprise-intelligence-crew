@@ -126,7 +126,7 @@ python3 -m pytest tests/ -v
                               └──────────────────────────────┘
 ```
 
-A **three-agent sequential CrewAI pipeline** with a **state-machine risk gate** that takes a user query through the full intelligence lifecycle — from live web research to risk-validated, SEO-optimized content — entirely on local infrastructure.
+A **three-agent sequential CrewAI pipeline** with a **LangGraph StateGraph risk gate** that takes a user query through the full intelligence lifecycle — from live web research to risk-validated, SEO-optimized content — entirely on local infrastructure.
 
 ### Tool Arsenal 
 
@@ -173,21 +173,17 @@ Custom provider extending `crewai.llms.base_llm.BaseLLM` that calls Ollama's **n
 | Health probes (`list_available_models`, `check_model_exists`) | ✅ |
 | Context window | 131,072 tokens |
 
-#### 2. `LLMFactory` (`src/llm_factory.py`)
-Standalone provider abstraction with `BaseLLMProvider` interface:
+#### 2. `MockNativeLLM` (`src/llm.py`)
+CrewAI-compatible mock provider that returns valid JSON matching the `response_model` schema (when provided) or a generic valid JSON dict. Used by `_make_llm()` when `LLM_PROVIDER=mock`. Enables full pipeline testing without any LLM connection.
 
-| Provider | Backend | Use Case |
-|---|---|---|
-| `OllamaProvider` | `/api/generate` + `/api/chat` via `httpx` | Standalone tool usage outside CrewAI |
-| `OpenAIProvider` | `openai` SDK | Cloud fallback |
-| `MockProvider` | Static responses | CI / testing / no-Ollama dev |
+In addition, three non-CrewAI providers (`OllamaProvider`, `OpenAIProvider`, `MockProvider`) following the `BaseLLMProvider` interface in `src/llm.py` cover direct use outside CrewAI.
 
 ### Risk Gate
 
-The `RiskGate` (`src/orchestration/risk_gate.py`) is a state machine:
+The `RiskGate` (`src/orchestration/risk_gate.py`) is a LangGraph `StateGraph`:
 
 ```
-analyze → evaluate → approve | reject → generate
+_analyze → _evaluate → approve | reject (loop back) → _generate → END
 ```
 
 - Risk > 0.7 → **reject** (flagged to user)
@@ -245,23 +241,23 @@ Pydantic Settings with `.env` override:
 │   ├── memory/
 │   │   └── crew_memory.py         # ChromaDB vector store client
 │   ├── orchestration/
-│   │   └── risk_gate.py           # State machine risk evaluator
+│   │   └── risk_gate.py           # LangGraph StateGraph risk evaluator
 │   ├── schemas/
 │   │   └── payloads.py            # Pydantic V2 contracts: Trend, Risk, Content
 │   ├── tools/
 │   │   ├── web_search.py          # DuckDuckGo search
 │   │   ├── web_scraper.py         # Trafilatura HTML extraction
 │   │   ├── summarizer.py          # LSA extractive summary (sumy)
-│   │   ├── sentiment_analyzer.py  # TextBlob + VADER sentiment
+│   │   ├── sentiment_analyzer.py  # TextBlob sentiment
 │   │   ├── bias_detector.py       # Heuristic political/commercial bias
 │   │   ├── validator.py           # Source credibility scoring
-│   │   └── seo_optimizer.py       # Readability, keyword density, suggestions
-│   ├── llm.py                     # OllamaNativeLLM — native /api/chat adapter
-│   ├── llm_factory.py             # Mock provider for testing/development
+│   │   ├── seo_optimizer.py       # Readability, keyword density, suggestions
+│   │   └── crew_tools.py          # 7 CrewAI BaseTool wrappers + TOOL_REGISTRY
+│   ├── llm.py                     # OllamaNativeLLM, BaseLLMProvider hierarchy, MockNativeLLM
 │   └── config.py                  # Pydantic Settings with env overrides
 ├── configs/
 │   └── crew_config.yaml           # Agent roles, goals, backstories
-├── tests/                         # 72 tests (pytest)
+├── tests/                         # 75 tests (pytest, 1 skipped — web search needs network)
 ├── AGENTS.md                      # Anchored summary — architecture decisions
 ├── Dockerfile
 ├── docker-compose.yml
@@ -288,7 +284,7 @@ docker compose exec ollama ollama pull qwen2.5:1.5b
 ## Testing
 
 ```bash
-# Full suite (72 tests, 1 skipped — web search requires network)
+# Full suite (75 tests, 1 skipped — web search requires network)
 pytest tests/ -v
 
 # With coverage

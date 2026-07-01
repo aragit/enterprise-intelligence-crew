@@ -25,23 +25,32 @@ class TestTrendPayload:
         with pytest.raises(ValidationError):
             TrendPayload(trend_name="test")
 
-    def test_invalid_url_raises(self):
-        with pytest.raises(ValidationError):
-            TrendPayload(
-                trend_name="test",
-                momentum_score=0.5,
-                extracted_metrics={"a": 1},
-                verified_sources=["not-a-url"],
-            )
+    def test_invalid_url_sanitized(self):
+        p = TrendPayload(
+            trend_name="test",
+            momentum_score=0.5,
+            extracted_metrics={"a": 1},
+            verified_sources=["not-a-url"],
+        )
+        assert p.verified_sources == ["https://placeholder.sanitized-source"]
 
-    def test_empty_verified_sources_allowed(self):
+    def test_empty_verified_sources_gets_placeholder(self):
         p = TrendPayload(
             trend_name="test",
             momentum_score=0.5,
             extracted_metrics={"a": 1},
             verified_sources=[],
         )
-        assert p.verified_sources == []
+        assert p.verified_sources == ["https://placeholder.sanitized-source"]
+
+    def test_url_extracted_from_text(self):
+        p = TrendPayload(
+            trend_name="test",
+            momentum_score=0.5,
+            extracted_metrics={"a": 1},
+            verified_sources=["See https://example.com/foo for details"],
+        )
+        assert p.verified_sources == ["https://example.com/foo"]
 
 
 class TestRiskPayload:
