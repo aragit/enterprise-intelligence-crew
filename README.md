@@ -2,20 +2,16 @@
   <img src="https://img.shields.io/badge/Python-3.12+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.12+"/>
   <img src="https://img.shields.io/badge/CrewAI-1.14+-orange?style=for-the-badge&logo=crewai" alt="CrewAI"/>
   <img src="https://img.shields.io/badge/FastAPI-0.115+-00a393?style=for-the-badge&logo=fastapi" alt="FastAPI"/>
-  <img src="https://img.shields.io/badge/LangGraph-1.2+-purple?style=for-the-badge&logo=langgraph" alt="LangGraph"/>
   <img src="https://img.shields.io/badge/Pydantic_V2-2.7+-E92063?style=for-the-badge&logo=pydantic" alt="Pydantic V2"/>
   <img src="https://img.shields.io/badge/Ollama-native-000000?style=for-the-badge&logo=ollama" alt="Ollama"/>
   <img src="https://img.shields.io/badge/OpenAI-compatible-412991?style=for-the-badge&logo=openai" alt="OpenAI"/>
-  <img src="https://img.shields.io/badge/vLLM-supported-8A2BE2?style=for-the-badge&logo=nvidia" alt="vLLM"/>
-  <img src="https://img.shields.io/badge/ChromaDB-1.1+-yellow?style=for-the-badge&logo=chromadb" alt="ChromaDB"/>
+  <img src="https://img.shields.io/badge/ChromaDB-0.5+-yellow?style=for-the-badge&logo=chromadb" alt="ChromaDB"/>
   <img src="https://img.shields.io/badge/Web_Search-DuckDuckGo-FF6600?style=for-the-badge&logo=duckduckgo" alt="DuckDuckGo"/>
   <img src="https://img.shields.io/badge/Scraping-Trafilatura-2C8EBB?style=for-the-badge&logo=python" alt="Trafilatura"/>
   <img src="https://img.shields.io/badge/Metrics-Prometheus-E6522C?style=for-the-badge&logo=prometheus" alt="Prometheus"/>
   <img src="https://img.shields.io/badge/Logging-Loguru-30A5DC?style=for-the-badge&logo=python" alt="Loguru"/>
-  <img src="https://img.shields.io/badge/Tracing-OpenTelemetry-000000?style=for-the-badge&logo=opentelemetry" alt="OpenTelemetry"/>
- <img src="https://img.shields.io/badge/Docker-ready-2496ED?style=for-the-badge&logo=docker" alt="Docker ready"/>
- </p>
-
+  <img src="https://img.shields.io/badge/Docker-ready-2496ED?style=for-the-badge&logo=docker" alt="Docker ready"/>
+</p>
 
 <h1 align="center">Enterprise Intelligence Crew</h1>
 <p align="center">
@@ -41,7 +37,7 @@ Enterprise Intelligence Crew is a **three-agent sequential pipeline** powered by
 2. **Risk Assessment** — Bias detection, compliance scoring
 3. **Content Generation** — SEO optimization, summarization
 
-All LLM inference runs **locally** via [Ollama](https://ollama.ai) — no API keys, no cloud dependency, no data egress. A LangGraph-powered **risk gate** enforces quality guardrails between stages, and [ChromaDB](https://www.trychroma.com/) with sentence transformers persists research for semantic recall.
+All LLM inference runs **locally** via [Ollama](https://ollama.ai) — no API keys, no cloud dependency, no data egress. A **dual-gate risk validation system** enforces quality guardrails between stages: a lightweight pure-Python gate validates `TrendPayload` before it reaches the RiskAnalyst, and a [LangGraph](https://langchain-ai.github.io/langgraph/) `StateGraph` gate evaluates `RiskPayload` before content generation. Both gates support feedback injection with circuit-breaker retry logic. [ChromaDB](https://www.trychroma.com/) with sentence transformers persists research for semantic recall.
 
 ---
 
@@ -89,7 +85,7 @@ python3 -m pytest tests/ -v
                                              │
                     ┌──────────────────────────────────────────┐
                     │         CREWAI PIPELINE                  │
-                    │        (sequential, 3 agents)            │
+                    │     (3 mini-crews, preemptive gates)     │
                     │                                          │
                     │  ┌──────────────────────┐                │
                     │  │ TrendInvestigator    │                │
@@ -98,7 +94,13 @@ python3 -m pytest tests/ -v
                     │  │  • Sentiment Analyzer│───────▶        │
                     │  └──────────┬───────────┘                │
                     │             │                            │
-                    │             ▼                            │
+                    │         ┌───┴───┐                        │
+                    │         │ GATE 1│── Pure Python          │
+                    │         │(Trend)│── approve / reject     │
+                    │         └───┬───┘                        │
+                    │    reject   │ approve                    │
+                    │    ┌────────┘     │                      │
+                    │    ▼ (feedback)   ▼                      │
                     │  ┌──────────────────────┐                │
                     │  │ RiskAnalyst          │                │
                     │  │  • Bias Detector     │  RiskPayload   │
@@ -106,11 +108,12 @@ python3 -m pytest tests/ -v
                     │  └──────────┬───────────┘                │
                     │             │                            │
                     │         ┌───┴───┐                        │
-                    │         │ RISK  │◀── max_iter guard     │
-                    │         │ GATE  │── approve/reject       │
+                    │         │ GATE 2│── LangGraph StateGraph │
+                    │         │(Risk) │── approve / reject     │
                     │         └───┬───┘                        │
-                    │             │ (approved)                 │
-                    │             ▼                            │
+                    │    reject   │ approve                    │
+                    │    ┌────────┘     │                      │
+                    │    ▼ (feedback)   ▼                      │
                     │  ┌──────────────────────┐                │
                     │  │ Copywriter           │                │
                     │  │  • SEO Optimizer     │ ContentPayload │
@@ -126,9 +129,19 @@ python3 -m pytest tests/ -v
                               └──────────────────────────────┘
 ```
 
-A **three-agent sequential CrewAI pipeline** with a **LangGraph StateGraph risk gate** that takes a user query through the full intelligence lifecycle — from live web research to risk-validated, SEO-optimized content — entirely on local infrastructure.
+A **three-agent sequential CrewAI pipeline** using **per-agent mini-crews** with **preemptive dual-gate validation**. The pipeline breaks the standard `crew.kickoff()` monolith into three isolated agent executions, each validated by a gate before data flows downstream. Gate 1 (pure Python) validates `TrendPayload` structure and source quality. Gate 2 (LangGraph `StateGraph`) evaluates risk scores with a 5-node compiled graph. Both gates support feedback injection: rejected outputs trigger agent rerun with contextual feedback, up to `max_iterations=3` before circuit-breaker force-approval.
 
-### Tool Arsenal 
+### Preemptive Execution Model
+
+Rather than a single `Crew(process=Process.sequential)`, each agent runs in its own 1-agent, 1-task mini-crew:
+
+1. `_run_agent("trend_investigator")` → **Gate 1** (`run_trend_gate()`) → approve/reject
+2. `_run_agent("risk_analyst")` → **Gate 2** (`run_risk_gate()`) → approve/reject
+3. `_run_agent("copywriter")` → store in ChromaDB
+
+On gate rejection, feedback is injected via `{feedback}` placeholder in `crew_config.yaml` task descriptions, and the agent re-runs with corrective context. This replaces CrewAI's built-in inter-task context passing.
+
+### Tool Arsenal
 
 | Tool | Library | What It Does |
 |---|---|---|
@@ -139,9 +152,9 @@ A **three-agent sequential CrewAI pipeline** with a **LangGraph StateGraph risk 
 | `validator` | `urllib.parse` + regex | TLD trust (`.edu`, `.gov`, `.org`), known-credible domain whitelist, content length check |
 | `seo_optimizer` | `textstat` | Flesch readability, grade level, keyword density, optimization suggestions |
 | `summarizer` | `sumy` (LSA) | Extractive summarization, configurable sentence count |
+| `crew_tools` | `crewai` | 7 `BaseTool` wrappers with `TOOL_REGISTRY` mapping |
 
 All tools wrapped with `@retry(max_attempts=3, delay=1.0)` and return `ToolResult(success, data, error, duration_ms)`.
-
 
 ### Data Contracts (Pydantic V2)
 
@@ -149,13 +162,13 @@ Every stage produces a strictly validated payload:
 
 | Contract | Fields | Validation |
 |---|---|---|
-| `TrendPayload` | `trend_name`, `momentum_score` (0.0–1.0), `extracted_metrics` (dict), `verified_sources` (list[str]) | Regex URL validator (`http(s)://` + valid host); rejects `localhost`, bare IPs |
+| `TrendPayload` | `trend_name`, `momentum_score` (0.0–1.0), `extracted_metrics` (dict), `verified_sources` (list[str]) | Regex URL validator (`http(s)://` + valid host); rejects `localhost`, bare IPs; extracts URLs from raw text |
 | `RiskPayload` | `is_safe` (bool), `risk_score` (0.0–1.0), `flagged_keywords` (list), `required_revisions` (list) | — |
 | `ContentPayload` | `headline`, `body_content`, `metadata_tags` (list[str]) | — |
 
+All payloads use `str` URLs (not `HttpUrl`) to avoid `json.dumps()` serialization issues in CrewAI task storage. URLs are validated via regex with extraction from raw text and placeholder fallback. Each payload has `__version__ = "1.0"`.
 
-
-### LLM Layer 
+### LLM Layer
 
 #### 1. `OllamaNativeLLM` (`src/llm.py`)
 Custom provider extending `crewai.llms.base_llm.BaseLLM` that calls Ollama's **native `/api/chat`** endpoint directly via `httpx`.
@@ -174,21 +187,26 @@ Custom provider extending `crewai.llms.base_llm.BaseLLM` that calls Ollama's **n
 | Context window | 131,072 tokens |
 
 #### 2. `MockNativeLLM` (`src/llm.py`)
-CrewAI-compatible mock provider that returns valid JSON matching the `response_model` schema (when provided) or a generic valid JSON dict. Used by `_make_llm()` when `LLM_PROVIDER=mock`. Enables full pipeline testing without any LLM connection.
+CrewAI-compatible mock provider that returns valid JSON matching the `response_model` schema (when provided) or a generic valid JSON dict. Used by `_make_llm()` when `LLM_PROVIDER=mock`. Enables full pipeline testing (76 tests) without any LLM connection.
 
-In addition, three non-CrewAI providers (`OllamaProvider`, `OpenAIProvider`, `MockProvider`) following the `BaseLLMProvider` interface in `src/llm.py` cover direct use outside CrewAI.
+#### 3. Standalone Provider Hierarchy (`src/llm.py`)
+Three non-CrewAI providers (`OllamaProvider`, `OpenAIProvider`, `MockProvider`) following the `BaseLLMProvider` interface for direct use outside CrewAI tasks.
 
-### Risk Gate
+### Risk Gate (Dual-Gate System)
 
-The `RiskGate` (`src/orchestration/risk_gate.py`) is a LangGraph `StateGraph`:
+The risk validation system consists of two gates with different implementations:
 
-```
-_analyze → _evaluate → approve | reject (loop back) → _generate → END
-```
+**Gate 1: `run_trend_gate()`** (`src/orchestration/risk_gate.py`)
+- Pure Python validator (no LangGraph overhead)
+- Checks: `momentum_score` range (0.0–1.0), non-empty `verified_sources`, non-empty `extracted_metrics`, non-empty `trend_name`
+- Lightweight: runs in <1ms
 
-- Risk > 0.7 → **reject** (flagged to user)
-- Risk ≤ 0.7 → **approve** (proceeds to Copywriter)
+**Gate 2: `run_risk_gate()`** (`src/orchestration/risk_gate.py`)
+- LangGraph `StateGraph` with 5 nodes: `_analyze → _evaluate → approve | reject → _generate → END`
+- Reject loop: risk > threshold (0.7) → feedback + re-evaluate
 - `max_iterations` exceeded → force-approve (circuit breaker)
+
+**Feedback Loop:** Both gates return `(decision: str, feedback: list[str])`. On rejection, feedback is injected into the agent's task description via `{feedback}` placeholder in `crew_config.yaml`, triggering a rerun with corrected context.
 
 ---
 
@@ -234,35 +252,48 @@ Pydantic Settings with `.env` override:
 ```
 ├── src/
 │   ├── agents/
-│   │   └── intelligence_crew.py   # Agent/task definitions, health check, _make_llm()
+│   │   └── intelligence_crew.py   # 3 mini-crew orchestration, PipelineState, _extract_payload
 │   ├── api/
 │   │   ├── main.py                # FastAPI app, lifespan, instrumentation
 │   │   └── routes.py              # Endpoints: health, crew run, memory, metrics
 │   ├── memory/
 │   │   └── crew_memory.py         # ChromaDB vector store client
 │   ├── orchestration/
-│   │   └── risk_gate.py           # LangGraph StateGraph risk evaluator
+│   │   └── risk_gate.py           # Dual-gate: pure Python (Gate 1) + LangGraph StateGraph (Gate 2)
 │   ├── schemas/
-│   │   └── payloads.py            # Pydantic V2 contracts: Trend, Risk, Content
+│   │   └── payloads.py            # Pydantic V2 contracts with URL sanitization + version markers
 │   ├── tools/
 │   │   ├── web_search.py          # DuckDuckGo search
 │   │   ├── web_scraper.py         # Trafilatura HTML extraction
 │   │   ├── summarizer.py          # LSA extractive summary (sumy)
 │   │   ├── sentiment_analyzer.py  # TextBlob sentiment
-│   │   ├── bias_detector.py       # Heuristic political/commercial bias
+│   │   ├── bias_detector.py       # Heuristic bias scan
 │   │   ├── validator.py           # Source credibility scoring
-│   │   ├── seo_optimizer.py       # Readability, keyword density, suggestions
+│   │   ├── seo_optimizer.py       # Readability, keyword density
 │   │   └── crew_tools.py          # 7 CrewAI BaseTool wrappers + TOOL_REGISTRY
-│   ├── llm.py                     # OllamaNativeLLM, BaseLLMProvider hierarchy, MockNativeLLM
+│   ├── llm.py                     # OllamaNativeLLM, MockNativeLLM, BaseLLMProvider hierarchy
 │   └── config.py                  # Pydantic Settings with env overrides
 ├── configs/
-│   └── crew_config.yaml           # Agent roles, goals, backstories
-├── tests/                         # 75 tests (pytest, 1 skipped — web search needs network)
-├── AGENTS.md                      # Anchored summary — architecture decisions
+│   └── crew_config.yaml           # Agent roles, goals, backstories (+ {feedback} placeholder)
+├── tests/                         # 76 tests (pytest, 1 skipped — web search needs network)
+│   ├── test_gates.py              # Gate 1 + Gate 2 logic + consistency
+│   ├── test_payload_extraction.py # 4-tier _extract_payload validation
+│   ├── test_pipeline_state.py     # PipelineState serialization
+│   ├── test_feedback_injection.py # Feedback loop + sanitization
+│   ├── test_dependencies.py       # Dead dependency verification
+│   ├── test_mini_crew.py          # Per-agent mini-crew execution
+│   ├── test_pipeline_integration.py # Full pipeline + circuit breaker
+│   ├── test_gate_consistency.py   # Cross-gate drift detection
+│   ├── test_schema_e2e.py         # URL sanitization + bounds
+│   ├── test_performance.py        # Latency benchmarks
+│   ├── test_concurrency.py        # Thread safety + file locks
+│   ├── test_security.py           # Prompt injection + malformed payloads
+│   └── test_functional.py         # Subprocess-based functional test
+├── AGENTS.md                      # Anchored summary — architecture decisions + test strategy
 ├── Dockerfile
 ├── docker-compose.yml
 ├── pyproject.toml
-└── requirements.txt
+└── requirements.txt               # langchain + langchain-chroma REMOVED
 ```
 
 ---
@@ -284,11 +315,18 @@ docker compose exec ollama ollama pull qwen2.5:1.5b
 ## Testing
 
 ```bash
-# Full suite (75 tests, 1 skipped — web search requires network)
+# Full suite (76 tests, 1 skipped — web search requires network)
 pytest tests/ -v
 
 # With coverage
 pytest tests/ --cov=src --cov-report=term-missing
+
+# Specific test categories
+pytest tests/test_gates.py -v              # Gate logic
+pytest tests/test_payload_extraction.py -v # Schema extraction
+pytest tests/test_feedback_injection.py -v # Feedback loop
+pytest tests/test_performance.py -v        # Benchmarks
+pytest tests/test_security.py -v           # Security hardening
 ```
 
 ---
@@ -300,8 +338,12 @@ pytest tests/ --cov=src --cov-report=term-missing
 | **Native Ollama adapter** | CrewAI's `OpenAICompatibleCompletion` needs `/v1/chat/completions` (Ollama ≥0.28). `OllamaNativeLLM` uses `/api/chat` — compatible with all versions. |
 | **ChromaDB over LanceDB** | Avoids CrewAI's internal memory which defaults to OpenAI for memory extraction. ChromaDB + sentence-transformers is fully local, no API keys. |
 | **Agent `memory=False`** | CrewAI internal memory requires `gpt-4o-mini` extraction by default. Our own `CrewMemory` handles persistence. |
-| **`HttpUrl` → `str` + validator** | Pydantic's `HttpUrl` breaks `json.dumps()` in CrewAI's task output storage. String URLs with a `field_validator` solve this. |
+| **`str` URLs over `HttpUrl`** | Pydantic's `HttpUrl` breaks `json.dumps()` in CrewAI's task output storage. String URLs with a `field_validator` solve this. |
 | **No LiteLLM dependency** | LiteLLM is optional in CrewAI 1.14. We use `httpx` directly — fewer dependencies, simpler debugging. |
+| **Preemptive dual-gate validation** | Breaking `crew.kickoff()` into per-agent mini-crews with intermediate gates prevents bad data from flowing downstream. Gate 1 (pure Python) is fast; Gate 2 (LangGraph) is expressive. |
+| **Schema-aware `_extract_payload`** | Replaced fragile string-matching (`_parse_crew_output`) with 4-tier Pydantic validation: direct instance → `TaskOutput` → JSON string → raw dict. Handles CrewAI output format variations across models. |
+| **Feedback injection via YAML placeholder** | `{feedback}` in `crew_config.yaml` task descriptions allows runtime injection of gate feedback without hardcoding strings in Python. Enables autonomous retry loops. |
+| **Dead dependency removal** | Removed `langchain` and `langchain-chroma` (zero imports in codebase). Reduced install time and attack surface. |
 
 ---
 

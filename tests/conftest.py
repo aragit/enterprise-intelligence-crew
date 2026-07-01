@@ -49,3 +49,9 @@ def sample_content_payload() -> dict[str, Any]:
         "body_content": "Artificial intelligence is revolutionizing the manufacturing sector with predictive maintenance and quality control.",
         "metadata_tags": ["AI", "Manufacturing", "Industry 4.0"],
     }
+
+
+@pytest.fixture
+def mock_intelligence_crew():
+    from src.agents.intelligence_crew import EnterpriseIntelligenceCrew
+    return EnterpriseIntelligenceCrew()

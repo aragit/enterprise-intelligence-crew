@@ -236,6 +236,12 @@ class EnterpriseIntelligenceCrew:
             verbose=True,
         )
 
+    def _build_feedback_block(self, feedback: list[str]) -> str:
+        if not feedback:
+            return ""
+        fb_lines = "\n".join(f"- {f}" for f in feedback)
+        return f"\n\nPREVIOUS ATTEMPT FEEDBACK:\n{fb_lines}"
+
     def _build_agent_inputs(self, state: PipelineState) -> dict[str, str]:
         inputs: dict[str, str] = {
             "query_context": state.query_context,
@@ -244,10 +250,7 @@ class EnterpriseIntelligenceCrew:
             "risk_context": "",
         }
         if state.feedback:
-            fb_lines = "\n".join(f"- {f}" for f in state.feedback)
-            inputs["feedback"] = (
-                f"\n\nPREVIOUS ATTEMPT FEEDBACK:\n{fb_lines}"
-            )
+            inputs["feedback"] = self._build_feedback_block(state.feedback)
         if state.trend_data:
             inputs["trend_context"] = json.dumps(
                 state.trend_data, indent=2, default=str
@@ -311,6 +314,7 @@ class EnterpriseIntelligenceCrew:
                     "Gate 1 max iterations (%d) reached, force-approving trend",
                     max_iterations,
                 )
+                state.feedback.append("Circuit breaker: max iterations reached for trend gate")
                 break
             state.feedback.extend(g1_feedback)
             state.iteration = trend_iter
@@ -362,6 +366,7 @@ class EnterpriseIntelligenceCrew:
                     "Gate 2 max iterations (%d) reached, force-approving risk",
                     max_iterations,
                 )
+                state.feedback.append("Circuit breaker: max iterations reached for risk gate")
                 break
             state.feedback.extend(g2_feedback)
             state.iteration += risk_iter

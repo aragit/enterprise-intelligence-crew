@@ -35,16 +35,17 @@ def _load_task_store() -> dict[str, dict[str, Any]]:
     return {}
 
 
-def _save_task_store(store: dict[str, dict[str, Any]]):
-    os.makedirs(str(_TASK_STORE_PATH.parent), exist_ok=True)
-    tmp = _TASK_STORE_PATH.with_suffix(".tmp")
+def _save_task_store(store: dict[str, dict[str, Any]], store_path: Path | None = None):
+    path = store_path or _TASK_STORE_PATH
+    os.makedirs(str(path.parent), exist_ok=True)
+    tmp = path.with_suffix(".tmp")
     with open(tmp, "w") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
         json.dump(store, f, indent=2, default=str)
         f.flush()
         os.fsync(f.fileno())
         fcntl.flock(f, fcntl.LOCK_UN)
-    tmp.replace(_TASK_STORE_PATH)
+    tmp.replace(path)
 
 
 _task_store: dict[str, dict[str, Any]] = _load_task_store()
